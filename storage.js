@@ -1,7 +1,8 @@
 import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { put, get, del } from '@vercel/blob';
+import { randomUUID } from 'node:crypto';
+import { put, get, head, del, BlobNotFoundError } from '@vercel/blob';
 
 const dataDir = resolve(process.env.DATA_DIR || join(import.meta.dirname, 'data'));
 const file = join(dataDir, 'survey.json');
@@ -17,8 +18,13 @@ export async function initStorage() {
 
 export async function loadSurvey() {
   if (!blobMode) return { data: JSON.parse(await readFile(file, 'utf8')), etag: null };
-  const result = await get(configPath, { access: 'public' });
-  if (!result || result.statusCode !== 200) return { data: empty(), etag: null };
+  let metadata;
+  try { metadata = await head(configPath); }
+  catch (error) { if (error instanceof BlobNotFoundError) return { data: empty(), etag: null }; throw error; }
+  const url = new URL(metadata.url);
+  url.searchParams.set('v', randomUUID());
+  const result = await get(url.toString(), { access: 'public' });
+  if (!result || result.statusCode !== 200) throw new Error('Không thể đọc cấu hình khảo sát.');
   return { data: JSON.parse(await new Response(result.stream).text()), etag: result.blob.etag };
 }
 
