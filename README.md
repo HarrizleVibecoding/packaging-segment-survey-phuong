@@ -40,7 +40,7 @@ Mỗi phản hồi hợp lệ tạo một hàng trong tab `Responses`, chứa ID
 
 ## Triển khai
 
-Khi deploy trên Vercel, dự án dùng Node Function trong `api/index.js`, tệp tĩnh trong `public/` và Vercel Blob để lưu ảnh cùng cấu hình khảo sát. Cần kết nối một Blob store công khai với project để Vercel tự cấp `BLOB_READ_WRITE_TOKEN` hoặc `BLOB_STORE_ID`. Đặt `ADMIN_TOKEN` trong môi trường Production và Preview. Cấu hình thêm `GOOGLE_SHEETS_WEBHOOK_URL` và `GOOGLE_SHEETS_SECRET` để bật nhận phản hồi.
+Khi deploy trên Vercel, dự án dùng `server.js` làm Node entrypoint và Vercel Blob để lưu ảnh cùng cấu hình khảo sát. Cần kết nối một Blob store công khai với project để Vercel tự cấp `BLOB_READ_WRITE_TOKEN` hoặc `BLOB_STORE_ID`. Đặt `ADMIN_TOKEN` trong môi trường Production và Preview. Cấu hình thêm `GOOGLE_SHEETS_WEBHOOK_URL` và `GOOGLE_SHEETS_SECRET` để bật nhận phản hồi.
 
 Khi chạy bằng Node trên máy riêng, ảnh và cấu hình nằm trong `data/`. Đặt `HOST=0.0.0.0`, `PORT`, `DATA_DIR` nếu cần truy cập qua mạng. Dùng HTTPS và không công khai mã quản trị. Bản hiện tại chưa có giới hạn tốc độ gửi công khai; nên thêm ở lớp hosting khi mở khảo sát rộng rãi.
 
