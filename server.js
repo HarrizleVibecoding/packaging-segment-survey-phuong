@@ -6,7 +6,11 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { initStorage, loadSurvey, saveSurvey, saveImage, dataDir, blobMode } from './storage.js';
 
 const root = resolve(import.meta.dirname);
-const publicDir = join(root, 'public');
+const staticFiles = {
+  'index.html': new URL('./public/index.html', import.meta.url),
+  'app.js': new URL('./public/app.js', import.meta.url),
+  'style.css': new URL('./public/style.css', import.meta.url)
+};
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || (process.env.VERCEL ? '0.0.0.0' : '127.0.0.1');
 const adminToken = process.env.ADMIN_TOKEN || '';
@@ -103,8 +107,8 @@ export async function handler(req, res) {
     }
     if (req.method === 'GET') {
       const requested = path === '/' ? 'index.html' : path.slice(1);
-      if (!['index.html', 'app.js', 'style.css'].includes(requested)) return json(res, 404, { error: 'Không tìm thấy.' });
-      const bytes = await readFile(join(publicDir, requested)); res.writeHead(200, { 'Content-Type': mime[extname(requested)] }); return res.end(bytes);
+      if (!staticFiles[requested]) return json(res, 404, { error: 'Không tìm thấy.' });
+      const bytes = await readFile(staticFiles[requested]); res.writeHead(200, { 'Content-Type': mime[extname(requested)] }); return res.end(bytes);
     }
     json(res, 404, { error: 'Không tìm thấy.' });
   } catch (error) { json(res, error.code === 'ENOENT' ? 404 : 400, { error: error.message || 'Có lỗi xảy ra.' }); }
