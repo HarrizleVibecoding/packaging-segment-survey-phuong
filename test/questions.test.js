@@ -15,7 +15,11 @@ test('lý do hiển thị từng nhóm, giữ câu trả lời và số bao bì'
   globalThis.window = { scrollTo() {} };
   globalThis.location = { hash: '' };
   globalThis.sessionStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
-  globalThis.fetch = async () => ({ ok: true, json: async () => ({ version: 1, products, acceptingResponses: true }) });
+  let submitted;
+  globalThis.fetch = async (url, options) => {
+    if (url === '/api/responses') { submitted = JSON.parse(options.body); return { ok: true, status: 201, json: async () => ({ ok: true }) }; }
+    return { ok: true, json: async () => ({ version: 1, products, acceptingResponses: true }) };
+  };
 
   await import(`../public/app.js?test=${crypto.randomUUID()}`);
   assert.match(app.innerHTML, /nhóm Economy/);
@@ -38,5 +42,15 @@ test('lý do hiển thị từng nhóm, giữ câu trả lời và số bao bì'
   tabs[2].onclick();
   assert.match(app.innerHTML, /Đánh giá của bạn cho nhóm Upper Mainstream/);
   assert.match(app.innerHTML, /Lý do Upper Mainstream đầy đủ/);
+  control('#nextQuestion').onclick();
+  assert.match(app.innerHTML, /Họ và Tên/);
+  assert.match(app.innerHTML, /SĐT.*không bắt buộc/);
+  assert.equal(submitted, undefined, 'Chuyển sang bước thông tin chưa gửi phản hồi.');
+  control('#submit').onclick();
+  assert.match(app.innerHTML, /Vui lòng nhập Họ và Tên/);
+  control('#respondentName').oninput({ target: { value: 'Nguyễn Văn A' } });
+  await control('#submit').onclick();
+  assert.deepEqual(submitted.respondent, { name: 'Nguyễn Văn A', phone: '' });
+  assert.match(app.innerHTML, /Cảm ơn Nguyễn Văn A/);
 });
 
