@@ -32,7 +32,7 @@ Mỗi phản hồi hợp lệ tạo một hàng trong tab `Responses`, chứa ID
 
 ## Quy tắc khảo sát
 
-- Đúng 3 bao bì mỗi nhóm: Giá rẻ, Phổ thông, Cao cấp (9 bao bì không trùng nhau), theo ảnh mẫu.
+- Đúng 3 bao bì mỗi nhóm: Economy, Mainstream, Upper Mainstream (9 bao bì không trùng nhau), theo ảnh mẫu.
 - Có thể tải lên bao nhiêu ảnh tùy ý; ảnh chưa chọn vẫn ở khu vực chờ.
 - Xem lớn ảnh qua nút kính lúp. Trên điện thoại, dùng 3 nút nhóm dưới ảnh; trên máy tính có thể kéo thả.
 - Sau phân loại là 3 câu hỏi lý do cho 3 nhóm và 1 câu hỏi về dấu hiệu cao cấp. Cả 4 câu cần ít nhất 10 ký tự.
