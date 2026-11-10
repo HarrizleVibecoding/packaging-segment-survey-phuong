@@ -1,9 +1,9 @@
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#zoomDialog');
 const groups = [
-  { id: 'budget', name: 'Giá rẻ', color: '#7b8f9b', short: 'Giá rẻ' },
-  { id: 'mainstream', name: 'Phổ thông', color: '#3187b5', short: 'Phổ thông' },
-  { id: 'premium', name: 'Cao cấp', color: '#c69330', short: 'Cao cấp' }
+  { id: 'budget', name: 'Economy', color: '#7b8f9b', short: 'Economy' },
+  { id: 'mainstream', name: 'Mainstream', color: '#3187b5', short: 'Main' },
+  { id: 'premium', name: 'Upper Mainstream', color: '#c69330', short: 'Upper M.' }
 ];
 let survey = { version: 0, products: [] };
 let selected = { budget: [], mainstream: [], premium: [] };
@@ -11,6 +11,7 @@ let answers = { budget: '', mainstream: '', premium: '', premiumSignals: '' };
 let submissionId = crypto.randomUUID();
 let step = 'sort';
 let error = '';
+let adminUnlocked = false;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const find = id => survey.products.find(p => p.id === id);
 const total = () => groups.reduce((n, g) => n + selected[g.id].length, 0);
@@ -38,7 +39,7 @@ document.querySelector('#closeZoom').onclick = () => dialog.close(); dialog.oncl
 function renderQuestions() {
   app.innerHTML = hero('Điều gì khiến bạn xếp như vậy?', 'Không có câu trả lời đúng hay sai. Hãy chia sẻ cảm nhận thật của bạn về hình ảnh, màu sắc và thiết kế.', '02 / LÝ DO & CẢM NHẬN', 2)
     + (error ? `<p class="notice">${esc(error)}</p>` : '')
-    + `<div class="questions">${groups.map((g, i) => `<div class="question"><label for="q-${g.id}">0${i + 1}. Vì sao bạn xếp các bao bì này vào nhóm ${g.name}?</label><p>Nhìn lại những bao bì bạn đã chọn trước khi trả lời.</p><div class="mini-products">${selected[g.id].map(id => `<img src="${esc(find(id)?.image)}" alt="${esc(find(id)?.name)}" title="${esc(find(id)?.name)}">`).join('')}</div><textarea id="q-${g.id}" data-answer="${g.id}" maxlength="3000" placeholder="Chia sẻ lý do của bạn...">${esc(answers[g.id])}</textarea></div>`).join('')}<div class="question"><label for="q-premiumSignals">04. Điều gì khiến bạn nghĩ một bao bì là cao cấp? Những dấu hiệu nào giúp bạn nhận diện điều đó?</label><p>Hãy mô tả các chi tiết cụ thể mà bạn quan sát được.</p><textarea id="q-premiumSignals" data-answer="premiumSignals" maxlength="3000" placeholder="Những chi tiết khiến bạn cảm nhận sự cao cấp...">${esc(answers.premiumSignals)}</textarea></div></div><div class="actions"><button id="back" class="button secondary">← Quay lại</button><button id="submit" class="button">Gửi phản hồi →</button></div>`;
+    + `<div class="questions">${groups.map((g, i) => `<div class="question"><label for="q-${g.id}">0${i + 1}. Vì sao bạn xếp các bao bì này vào nhóm ${g.name}?</label><p>Nhìn lại những bao bì bạn đã chọn trước khi trả lời.</p><div class="mini-products">${selected[g.id].map(id => `<img src="${esc(find(id)?.image)}" alt="${esc(find(id)?.name)}" title="${esc(find(id)?.name)}">`).join('')}</div><textarea id="q-${g.id}" data-answer="${g.id}" maxlength="3000" placeholder="Chia sẻ lý do của bạn...">${esc(answers[g.id])}</textarea></div>`).join('')}<div class="question"><label for="q-premiumSignals">04. Điều gì khiến bạn nghĩ một bao bì thuộc phân khúc Upper Mainstream? Những dấu hiệu nào giúp bạn nhận diện điều đó?</label><p>Hãy mô tả các chi tiết cụ thể mà bạn quan sát được.</p><textarea id="q-premiumSignals" data-answer="premiumSignals" maxlength="3000" placeholder="Những chi tiết khiến bạn nhận ra phân khúc Upper Mainstream...">${esc(answers.premiumSignals)}</textarea></div></div><div class="actions"><button id="back" class="button secondary">← Quay lại</button><button id="submit" class="button">Gửi phản hồi →</button></div>`;
   app.querySelectorAll('[data-answer]').forEach(t => t.oninput = () => { answers[t.dataset.answer] = t.value; persist(); });
   app.querySelector('#back').onclick = () => { error = ''; step = 'sort'; persist(); render(); window.scrollTo(0, 0); };
   app.querySelector('#submit').onclick = submit;
@@ -51,9 +52,17 @@ async function submit() {
 }
 function renderAdmin() {
   const token = sessionStorage.getItem('adminToken') || '';
-  app.innerHTML = `<section class="hero"><div><p class="eyebrow">QUẢN TRỊ KHẢO SÁT</p><h1>Thư viện bao bì</h1><p class="sub">Tải ảnh của bạn lên. Mỗi lần thay đổi danh sách sẽ tạo phiên bản khảo sát mới.</p></div></section><div class="admin-grid"><section class="panel"><h2>Thêm bao bì</h2><label class="field">Mã quản trị<input id="token" type="password" value="${esc(token)}" autocomplete="off" placeholder="Nhập ADMIN_TOKEN"></label><label class="field">Tên bao bì<input id="name" maxlength="100" placeholder="Ví dụ: Nước giặt A"></label><label class="field">Hình ảnh (PNG, JPG, WebP; tối đa 5 MB)<input id="image" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="upload" class="button">Tải ảnh lên</button><p id="adminMessage" class="sub" style="margin-top:16px"></p></section><section class="panel"><h2>Danh sách ảnh · ${survey.products.length}</h2><div class="admin-list">${survey.products.map(p => `<div class="admin-item"><img src="${esc(p.image)}" alt="${esc(p.name)}"><strong title="${esc(p.name)}">${esc(p.name)}</strong><button data-delete="${p.id}">Xóa khỏi khảo sát</button></div>`).join('')}</div>${survey.products.length ? '' : '<p class="sub">Chưa có ảnh nào. Hãy thêm ít nhất 9 ảnh.</p>'}</section></div><div class="actions"><a href="/" class="button secondary" style="text-decoration:none">← Xem khảo sát</a></div>`;
+  if (!adminUnlocked) {
+    app.innerHTML = `<section class="hero"><div><p class="eyebrow">QUẢN TRỊ KHẢO SÁT</p><h1>Nhập mã quản trị</h1><p class="sub">Chỉ người có mã đúng mới có thể thêm hoặc xóa hình ảnh bao bì.</p></div></section><section class="panel" style="max-width:420px;margin:20px 0 45px"><label class="field">Mã quản trị<input id="adminCode" type="password" value="${esc(token)}" autocomplete="off" placeholder="Nhập mã quản trị"></label><button id="unlockAdmin" class="button">Mở quản trị →</button><p id="adminMessage" class="sub" style="margin-top:15px"></p></section>`;
+    const input = app.querySelector('#adminCode'), message = app.querySelector('#adminMessage');
+    const unlock = async () => { const code = input.value.trim(); const r = await fetch('/api/admin/status', { headers: { Authorization: `Bearer ${code}` } }); if (!r.ok) { message.textContent = 'Mã quản trị không đúng.'; return; } sessionStorage.setItem('adminToken', code); adminUnlocked = true; renderAdmin(); };
+    app.querySelector('#unlockAdmin').onclick = unlock;
+    input.onkeydown = e => { if (e.key === 'Enter') unlock(); };
+    return;
+  }
+  app.innerHTML = `<section class="hero"><div><p class="eyebrow">QUẢN TRỊ KHẢO SÁT</p><h1>Thư viện bao bì</h1><p class="sub">Tải ảnh của bạn lên. Mỗi lần thay đổi danh sách sẽ tạo phiên bản khảo sát mới.</p></div><button id="lockAdmin" class="button secondary">Khóa quản trị</button></section><div class="admin-grid"><section class="panel"><h2>Thêm bao bì</h2><label class="field">Tên bao bì<input id="name" maxlength="100" placeholder="Ví dụ: Nước giặt A"></label><label class="field">Hình ảnh (PNG, JPG, WebP; tối đa 5 MB)<input id="image" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="upload" class="button">Tải ảnh lên</button><p id="adminMessage" class="sub" style="margin-top:16px"></p></section><section class="panel"><h2>Danh sách ảnh · ${survey.products.length}</h2><div class="admin-list">${survey.products.map(p => `<div class="admin-item"><img src="${esc(p.image)}" alt="${esc(p.name)}"><strong title="${esc(p.name)}">${esc(p.name)}</strong><button data-delete="${p.id}">Xóa khỏi khảo sát</button></div>`).join('')}</div>${survey.products.length ? '' : '<p class="sub">Chưa có ảnh nào. Hãy thêm ít nhất 9 ảnh.</p>'}</section></div><div class="actions"><a href="/" class="button secondary" style="text-decoration:none">← Xem khảo sát</a></div>`;
   const message = app.querySelector('#adminMessage');
-  app.querySelector('#token').oninput = e => sessionStorage.setItem('adminToken', e.target.value);
+  app.querySelector('#lockAdmin').onclick = () => { adminUnlocked = false; sessionStorage.removeItem('adminToken'); renderAdmin(); };
   app.querySelector('#upload').onclick = async () => { const name = app.querySelector('#name').value.trim(), image = app.querySelector('#image').files[0]; if (!name || !image) { message.textContent = 'Vui lòng nhập tên và chọn ảnh.'; return; } const button = app.querySelector('#upload'); button.disabled = true; message.textContent = 'Đang tải ảnh…'; try { const data = await new Promise((ok, fail) => { const reader = new FileReader(); reader.onload = () => ok(reader.result); reader.onerror = fail; reader.readAsDataURL(image); }); const r = await fetch('/api/admin/products', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('adminToken') || ''}` }, body: JSON.stringify({ name, image: data }) }); const result = await r.json(); if (!r.ok) throw new Error(result.error); survey = result; sessionStorage.removeItem('surveyDraft'); renderAdmin(); } catch (e) { message.textContent = e.message; button.disabled = false; } };
   app.querySelectorAll('[data-delete]').forEach(b => b.onclick = async () => { if (!confirm('Xóa bao bì này khỏi khảo sát hiện tại?')) return; const r = await fetch(`/api/admin/products/${b.dataset.delete}`, { method: 'DELETE', headers: { Authorization: `Bearer ${sessionStorage.getItem('adminToken') || ''}` } }); const result = await r.json(); if (!r.ok) { message.textContent = result.error; return; } survey = result; sessionStorage.removeItem('surveyDraft'); renderAdmin(); });
 }
