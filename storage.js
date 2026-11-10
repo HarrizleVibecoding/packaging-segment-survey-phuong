@@ -1,7 +1,7 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { put, get } from '@vercel/blob';
+import { put, get, del } from '@vercel/blob';
 
 const dataDir = resolve(process.env.DATA_DIR || join(import.meta.dirname, 'data'));
 const file = join(dataDir, 'survey.json');
@@ -31,6 +31,13 @@ export async function saveImage(id, ext, bytes) {
   if (!blobMode) { await writeFile(join(dataDir, 'images', `${id}.${ext}`), bytes); return `/images/${id}.${ext}`; }
   const blob = await put(`survey/images/${id}.${ext}`, bytes, { access: 'public', contentType: ext === 'jpg' ? 'image/jpeg' : `image/${ext}` });
   return blob.url;
+}
+
+export async function removeImage(image) {
+  if (blobMode) return del(image);
+  const filename = image.split('/').at(-1);
+  if (!/^[a-f0-9-]{36}\.(png|jpg|webp)$/.test(filename)) throw new Error('Đường dẫn ảnh không hợp lệ.');
+  await unlink(join(dataDir, 'images', filename));
 }
 
 export { dataDir, blobMode };
