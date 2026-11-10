@@ -43,6 +43,15 @@ test('upload, phân loại, gửi Sheet và chống gửi trùng', async () => {
     assert.equal(changed.status, 409);
     assert.equal(changed.data.code, 'SURVEY_CHANGED');
     assert.equal(sheetRows, 2);
+    for (let i = 10; i <= 30; i++) {
+      const added = await api('/api/admin/products', 'POST', { name: `Bao bì ${i}`, image: png }, 'admin-secret');
+      assert.equal(added.status, 201);
+      assert.equal(added.data.products.length, i);
+    }
+    const full = await api('/api/admin/products', 'POST', { name: 'Bao bì 31', image: png }, 'admin-secret');
+    assert.equal(full.status, 409);
+    assert.match(full.data.error, /tối đa 30 ảnh/);
+    assert.equal((await api('/api/survey', 'GET')).data.products.length, 30);
   } finally { child.kill(); sheet.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
