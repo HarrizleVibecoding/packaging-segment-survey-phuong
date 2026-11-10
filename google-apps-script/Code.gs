@@ -1,10 +1,12 @@
-// Dán vào Apps Script gắn với Google Sheet nhận kết quả.
+// Dán vào Apps Script gắn với Google Sheet PHẢN HỒI SURVEY.
 // Trong Project Settings > Script Properties, tạo khóa SURVEY_SECRET.
+const SPREADSHEET_ID = '1nTNtNffh-yh5y36Fq-sWLxf1Fw9_Or2Ggx375bfOpfM';
+const SHEET_ID = 0;
 const HEADERS = [
   'submission_id', 'submitted_at', 'survey_version',
-  'budget_ids', 'budget_names', 'mainstream_ids', 'mainstream_names',
-  'premium_ids', 'premium_names', 'why_budget', 'why_mainstream',
-  'why_premium', 'premium_signals'
+  'economy_ids', 'economy_names', 'mainstream_ids', 'mainstream_names',
+  'upper_mainstream_ids', 'upper_mainstream_names', 'why_economy', 'why_mainstream',
+  'why_upper_mainstream', 'upper_mainstream_signals'
 ];
 
 function doPost(e) {
@@ -15,7 +17,8 @@ function doPost(e) {
     const secret = PropertiesService.getScriptProperties().getProperty('SURVEY_SECRET');
     if (!secret || data.secret !== secret) return out({ ok: false, error: 'unauthorized' });
     if (!/^[a-f0-9-]{36}$/i.test(data.submissionId || '')) return out({ ok: false, error: 'invalid_id' });
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Responses') || SpreadsheetApp.getActiveSpreadsheet().insertSheet('Responses');
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetById(SHEET_ID);
+    if (!sheet) return out({ ok: false, error: 'sheet_not_found' });
     if (sheet.getLastRow() === 0) sheet.appendRow(HEADERS);
     const ids = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().flat() : [];
     if (ids.includes(data.submissionId)) return out({ ok: true, duplicate: true });
