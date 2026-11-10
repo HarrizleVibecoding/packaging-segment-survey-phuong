@@ -31,10 +31,13 @@ test('upload, phân loại, gửi Sheet và chống gửi trùng', async () => {
     const survey = (await api('/api/survey', 'GET')).data;
     assert.equal(survey.products.length, 9);
     const ids = survey.products.map(p => p.id);
-    const payload = { submissionId: crypto.randomUUID(), surveyVersion: survey.version, selections: { budget: ids.slice(0, 3), mainstream: ids.slice(3, 6), premium: ids.slice(6, 9) }, answers: { budget: 'Lý do nhóm giá rẻ', mainstream: 'Lý do nhóm phổ thông', premium: 'Lý do nhóm cao cấp' } };
+    const payload = { submissionId: crypto.randomUUID(), surveyVersion: survey.version, selections: { budget: ids.slice(0, 3), mainstream: ids.slice(3, 6), premium: ids.slice(6, 9) }, answers: { budget: 'Lý do nhóm giá rẻ', mainstream: 'Lý do nhóm phổ thông', premium: 'Lý do nhóm cao cấp' }, respondent: { name: 'Nguyễn Văn A', phone: '' } };
     assert.equal((await api('/api/responses', 'POST', { ...payload, selections: { ...payload.selections, premium: ids.slice(0, 3) } })).status, 400);
+    assert.equal((await api('/api/responses', 'POST', { ...payload, respondent: { name: '', phone: '' } })).status, 400);
+    assert.equal((await api('/api/responses', 'POST', { ...payload, respondent: { name: 'Nguyễn Văn A', phone: 'không phải số' } })).status, 400);
     assert.equal((await api('/api/responses', 'POST', payload)).status, 201);
     assert.equal(lastSheetPayload.answers.premiumSignals, '', 'Cột cũ trên Sheet được giữ trống.');
+    assert.deepEqual(lastSheetPayload.respondent, { name: 'Nguyễn Văn A', phone: '' }, 'SĐT có thể bỏ trống.');
     assert.equal((await api('/api/responses', 'POST', payload)).data.duplicate, true);
     assert.equal(sheetRows, 1);
     assert.equal((await api('/api/admin/products', 'POST', { name: 'Quá lớn', image: 'data:image/png;base64,' + Buffer.alloc(3_000_001).toString('base64') }, 'admin-secret')).status, 400);
