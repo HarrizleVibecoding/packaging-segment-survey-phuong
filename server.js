@@ -109,6 +109,7 @@ export async function handler(req, res) {
     json(res, 404, { error: 'Không tìm thấy.' });
   } catch (error) { json(res, error.code === 'ENOENT' ? 404 : 400, { error: error.message || 'Có lỗi xảy ra.' }); }
 }
-createServer(handler).listen(port, host, () => console.log(`Survey: http://${host}:${port}`));
+export default handler;
+if (process.env.VERCEL !== '1') createServer(handler).listen(port, host, () => console.log(`Survey: http://${host}:${port}`));
 export { validateSubmission, cleanSheet };
 
