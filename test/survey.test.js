@@ -35,6 +35,14 @@ test('upload, phân loại, gửi Sheet và chống gửi trùng', async () => {
     assert.equal((await api('/api/responses', 'POST', payload)).status, 201);
     assert.equal((await api('/api/responses', 'POST', payload)).data.duplicate, true);
     assert.equal(sheetRows, 1);
+    assert.equal((await api('/api/admin/products', 'POST', { name: 'Quá lớn', image: 'data:image/png;base64,' + Buffer.alloc(3_000_001).toString('base64') }, 'admin-secret')).status, 400);
+    assert.equal((await api('/api/admin/products', 'POST', { name: 'Bao bì mới', image: png }, 'admin-secret')).status, 201);
+    assert.equal((await api('/api/responses', 'POST', { ...payload, submissionId: crypto.randomUUID() })).status, 201, 'Thêm ảnh không được làm mất phản hồi đang thực hiện.');
+    assert.equal((await api(`/api/admin/products/${ids[0]}`, 'DELETE', undefined, 'admin-secret')).status, 200);
+    const changed = await api('/api/responses', 'POST', { ...payload, submissionId: crypto.randomUUID() });
+    assert.equal(changed.status, 409);
+    assert.equal(changed.data.code, 'SURVEY_CHANGED');
+    assert.equal(sheetRows, 2);
   } finally { child.kill(); sheet.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
