@@ -6,7 +6,7 @@ const HEADERS = [
   'submission_id', 'submitted_at', 'survey_version',
   'economy_ids', 'economy_names', 'mainstream_ids', 'mainstream_names',
   'upper_mainstream_ids', 'upper_mainstream_names', 'why_economy', 'why_mainstream',
-  'why_upper_mainstream', 'upper_mainstream_signals'
+  'why_upper_mainstream', 'upper_mainstream_signals', 'full_name', 'phone'
 ];
 
 function doPost(e) {
@@ -20,6 +20,7 @@ function doPost(e) {
     const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetById(SHEET_ID);
     if (!sheet) return out({ ok: false, error: 'sheet_not_found' });
     if (sheet.getLastRow() === 0) sheet.appendRow(HEADERS);
+    if (sheet.getRange(1, 14).getValue() !== 'full_name') sheet.getRange(1, 14, 1, 2).setValues([['full_name', 'phone']]);
     const ids = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().flat() : [];
     if (ids.includes(data.submissionId)) return out({ ok: true, duplicate: true });
     const safe = value => { const s = String(value || '').trim(); return /^[=+\-@]/.test(s) ? "'" + s : s; };
@@ -30,7 +31,8 @@ function doPost(e) {
       join(data.selections.mainstream), join(data.selectionNames.mainstream),
       join(data.selections.premium), join(data.selectionNames.premium),
       safe(data.answers.budget), safe(data.answers.mainstream),
-      safe(data.answers.premium), safe(data.answers.premiumSignals)
+      safe(data.answers.premium), safe(data.answers.premiumSignals),
+      safe(data.respondent.name), safe(data.respondent.phone)
     ]);
     return out({ ok: true });
   } catch (error) { return out({ ok: false, error: String(error) }); }
