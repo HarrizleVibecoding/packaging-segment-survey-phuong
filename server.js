@@ -38,6 +38,7 @@ function auth(req) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 function cleanSheet(value) { const s = String(value || '').trim(); return /^[=+\-@]/.test(s) ? `'${s}` : s; }
+function webhookHost() { try { return webhook ? new URL(webhook).host : ''; } catch { return ''; } }
 function httpError(status, message) { const error = new Error(message); error.status = status; return error; }
 async function updateSurvey(change, firstLoad) {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -64,8 +65,13 @@ function validateSubmission(input, survey) {
   if (new Set(all).size !== 9 || all.some(id => !survey.products.some(p => p.id === id))) throw new Error('Lựa chọn bao bì không hợp lệ.');
   const answers = input.answers;
   if (!answers || groups.some(key => typeof answers[key] !== 'string' || answers[key].trim().length < 10 || answers[key].length > 3000)) throw new Error('Vui lòng trả lời đủ 3 câu hỏi (ít nhất 10 ký tự mỗi câu).');
+  const respondent = input.respondent;
+  if (!respondent || typeof respondent.name !== 'string' || respondent.name.trim().length < 2 || respondent.name.length > 100) throw new Error('Vui lòng nhập Họ và Tên (ít nhất 2 ký tự).');
+  if (typeof respondent.phone !== 'string' || respondent.phone.length > 30) throw new Error('SĐT không hợp lệ.');
+  const phone = respondent.phone.trim();
+  if (phone && (!/^[+()\d .-]{6,30}$/.test(phone) || (phone.match(/\d/g) || []).length < 7 || (phone.match(/\d/g) || []).length > 15)) throw new Error('SĐT chưa đúng định dạng. Bạn có thể sửa hoặc để trống.');
   const selectionNames = Object.fromEntries(groups.map(group => [group, selected[group].map(id => survey.products.find(p => p.id === id).name)]));
-  return { submissionId: input.submissionId, submittedAt: new Date().toISOString(), surveyVersion: input.surveyVersion, selections: selected, selectionNames, answers: { ...Object.fromEntries(groups.map(key => [key, cleanSheet(answers[key])])), premiumSignals: '' } };
+  return { submissionId: input.submissionId, submittedAt: new Date().toISOString(), surveyVersion: input.surveyVersion, selections: selected, selectionNames, answers: { ...Object.fromEntries(groups.map(key => [key, cleanSheet(answers[key])])), premiumSignals: '' }, respondent: { name: cleanSheet(respondent.name), phone: cleanSheet(phone) } };
 }
 async function alreadySubmitted(id) { if (blobMode || !existsSync(responseFile)) return false; return (await readFile(responseFile, 'utf8')).split('\n').some(line => line.includes(`"submissionId":"${id}"`)); }
 async function sendToSheet(record) {
@@ -81,7 +87,7 @@ export async function handler(req, res) {
   try {
     const path = new URL(req.url, `http://${req.headers.host}`).pathname;
     if (req.method === 'GET' && path === '/api/survey') { const { data } = await loadSurvey(); return json(res, 200, { ...data, acceptingResponses: sheetReady }); }
-    if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: sheetReady, adminConfigured: Boolean(adminToken) });
+    if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: sheetReady, adminConfigured: Boolean(adminToken), responseEndpoint: webhookHost() });
     if (req.method === 'POST' && path === '/api/admin/products') {
       if (!auth(req)) return json(res, 401, { error: 'Mã quản trị không đúng hoặc chưa được cấu hình.' });
       const input = await body(req);
