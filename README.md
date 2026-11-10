@@ -33,7 +33,7 @@ Mỗi phản hồi hợp lệ tạo một hàng trong tab `Trang tính1` (gid 0)
 ## Quy tắc khảo sát
 
 - Đúng 3 bao bì mỗi nhóm: Economy, Mainstream, Upper Mainstream (9 bao bì không trùng nhau), theo ảnh mẫu.
-- Có thể tải lên bao nhiêu ảnh tùy ý; ảnh chưa chọn vẫn ở khu vực chờ.
+- Có thể tải lên tối đa 30 ảnh; ảnh chưa chọn vẫn ở khu vực chờ.
 - Xem lớn ảnh qua nút kính lúp, kể cả ảnh đã chọn và ảnh ở màn hình câu hỏi. Chạm hoặc nhấn Enter trên bao bì để chọn nhóm; trên máy tính có thể kéo thả.
 - Sau phân loại là 3 câu hỏi lý do cho 3 nhóm và 1 câu hỏi về dấu hiệu cao cấp. Cả 4 câu cần ít nhất 10 ký tự.
 - Thay đổi thư viện ảnh sẽ tăng `surveyVersion`. Bản nháp vẫn được giữ nếu ảnh đã chọn còn tồn tại; nếu một ảnh đã chọn bị xóa, người trả lời được đưa về bước phân loại để chọn lại.
