@@ -63,9 +63,9 @@ function validateSubmission(input, survey) {
   }
   if (new Set(all).size !== 9 || all.some(id => !survey.products.some(p => p.id === id))) throw new Error('Lựa chọn bao bì không hợp lệ.');
   const answers = input.answers;
-  if (!answers || groups.concat('premiumSignals').some(key => typeof answers[key] !== 'string' || answers[key].trim().length < 10 || answers[key].length > 3000)) throw new Error('Vui lòng trả lời đủ 4 câu hỏi (ít nhất 10 ký tự mỗi câu).');
+  if (!answers || groups.some(key => typeof answers[key] !== 'string' || answers[key].trim().length < 10 || answers[key].length > 3000)) throw new Error('Vui lòng trả lời đủ 3 câu hỏi (ít nhất 10 ký tự mỗi câu).');
   const selectionNames = Object.fromEntries(groups.map(group => [group, selected[group].map(id => survey.products.find(p => p.id === id).name)]));
-  return { submissionId: input.submissionId, submittedAt: new Date().toISOString(), surveyVersion: input.surveyVersion, selections: selected, selectionNames, answers: Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, cleanSheet(v)])) };
+  return { submissionId: input.submissionId, submittedAt: new Date().toISOString(), surveyVersion: input.surveyVersion, selections: selected, selectionNames, answers: { ...Object.fromEntries(groups.map(key => [key, cleanSheet(answers[key])])), premiumSignals: '' } };
 }
 async function alreadySubmitted(id) { if (blobMode || !existsSync(responseFile)) return false; return (await readFile(responseFile, 'utf8')).split('\n').some(line => line.includes(`"submissionId":"${id}"`)); }
 async function sendToSheet(record) {
