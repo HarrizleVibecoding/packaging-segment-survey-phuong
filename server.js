@@ -3,6 +3,7 @@ import { readFile, appendFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { BlobPreconditionFailedError } from '@vercel/blob';
 import { initStorage, loadSurvey, saveSurvey, saveImage, removeImage, dataDir, blobMode } from './storage.js';
 
 const root = resolve(import.meta.dirname);
@@ -18,6 +19,7 @@ const webhook = process.env.GOOGLE_SHEETS_WEBHOOK_URL || '';
 const webhookSecret = process.env.GOOGLE_SHEETS_SECRET || '';
 const sheetReady = Boolean(webhook && webhookSecret);
 const groups = ['budget', 'mainstream', 'premium'];
+const maxProducts = 30;
 const responseFile = join(dataDir, 'responses.jsonl');
 const pendingSubmissions = new Set();
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
@@ -36,6 +38,19 @@ function auth(req) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 function cleanSheet(value) { const s = String(value || '').trim(); return /^[=+\-@]/.test(s) ? `'${s}` : s; }
+function httpError(status, message) { const error = new Error(message); error.status = status; return error; }
+async function updateSurvey(change, firstLoad) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data, etag } = attempt === 0 && firstLoad ? firstLoad : await loadSurvey();
+    const result = change(data);
+    data.version++;
+    try { await saveSurvey(data, etag); return { survey: data, result }; }
+    catch (error) {
+      if (!(error instanceof BlobPreconditionFailedError)) throw error;
+      if (attempt === 4) throw httpError(503, 'Thư viện đang được cập nhật. Vui lòng thử lại sau vài giây.');
+    }
+  }
+}
 function validateSubmission(input, survey) {
   if (!input || typeof input !== 'object' || !/^[a-f0-9-]{36}$/i.test(input.submissionId || '')) throw new Error('Mã phản hồi không hợp lệ.');
   if (!Number.isSafeInteger(input.surveyVersion) || input.surveyVersion < 0 || input.surveyVersion > survey.version) throw new Error('Phiên bản khảo sát không hợp lệ.');
@@ -79,21 +94,26 @@ export async function handler(req, res) {
       const valid = kind === 'png' ? bytes.subarray(0, 4).equals(Buffer.from([137,80,78,71])) : kind === 'jpeg' ? bytes.subarray(0, 3).equals(Buffer.from([255,216,255])) : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
       if (!valid) throw new Error('Nội dung ảnh không hợp lệ.');
       const id = randomUUID(), ext = kind === 'jpeg' ? 'jpg' : kind;
-      const { data: survey, etag } = await loadSurvey();
+      const firstLoad = await loadSurvey();
+      if (firstLoad.data.products.length >= maxProducts) throw httpError(409, 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.');
       const image = await saveImage(id, ext, bytes);
       try {
-        survey.products.push({ id, name: input.name.trim(), image }); survey.version++;
-        await saveSurvey(survey, etag);
+        const { survey } = await updateSurvey(data => {
+          if (data.products.length >= maxProducts) throw httpError(409, 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.');
+          data.products.push({ id, name: input.name.trim(), image });
+        }, firstLoad);
+        return json(res, 201, survey);
       } catch (error) { await removeImage(image).catch(() => {}); throw error; }
-      return json(res, 201, survey);
     }
     if (req.method === 'DELETE' && path.startsWith('/api/admin/products/')) {
       if (!auth(req)) return json(res, 401, { error: 'Không có quyền quản trị.' });
-      const id = path.split('/').at(-1), { data: survey, etag } = await loadSurvey(), length = survey.products.length;
-      const removed = survey.products.find(p => p.id === id);
-      survey.products = survey.products.filter(p => p.id !== id);
-      if (length === survey.products.length) return json(res, 404, { error: 'Không tìm thấy bao bì.' });
-      survey.version++; await saveSurvey(survey, etag);
+      const id = path.split('/').at(-1);
+      const { survey, result: removed } = await updateSurvey(data => {
+        const removed = data.products.find(p => p.id === id);
+        if (!removed) throw httpError(404, 'Không tìm thấy bao bì.');
+        data.products = data.products.filter(p => p.id !== id);
+        return removed;
+      });
       await removeImage(removed.image).catch(error => console.error('Ảnh không thể xóa khỏi kho:', error));
       return json(res, 200, survey);
     }
@@ -121,7 +141,7 @@ export async function handler(req, res) {
       const bytes = await readFile(staticFiles[requested]); res.writeHead(200, { 'Content-Type': mime[extname(requested)] }); return res.end(bytes);
     }
     json(res, 404, { error: 'Không tìm thấy.' });
-  } catch (error) { json(res, error.code === 'ENOENT' ? 404 : 400, { error: error.message || 'Có lỗi xảy ra.' }); }
+  } catch (error) { json(res, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.message || 'Có lỗi xảy ra.' }); }
 }
 export default handler;
 if (process.env.VERCEL !== '1') createServer(handler).listen(port, host, () => console.log(`Survey: http://${host}:${port}`));
