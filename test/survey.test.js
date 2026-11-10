@@ -17,11 +17,13 @@ test('upload, phân loại, gửi Sheet và chống gửi trùng', async () => {
   });
   sheet.listen(0, '127.0.0.1'); await once(sheet, 'listening');
   const appPort = 41000 + Math.floor(Math.random() * 10000);
-  const child = spawn(process.execPath, ['server.js'], { cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: String(appPort), DATA_DIR: dir, ADMIN_TOKEN: 'admin-secret', GOOGLE_SHEETS_WEBHOOK_URL: `http://127.0.0.1:${sheet.address().port}`, GOOGLE_SHEETS_SECRET: 'secret' }, stdio: 'ignore' });
+  const child = spawn(process.execPath, ['server.js'], { cwd: new URL('..', import.meta.url), env: { ...process.env, VERCEL: '', PORT: String(appPort), DATA_DIR: dir, ADMIN_TOKEN: 'admin-secret', GOOGLE_SHEETS_WEBHOOK_URL: `http://127.0.0.1:${sheet.address().port}`, GOOGLE_SHEETS_SECRET: 'secret' }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${appPort}`;
   const api = async (path, method, data, token) => { const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: data ? JSON.stringify(data) : undefined }); return { status: r.status, data: await r.json() }; };
   try {
-    for (let i = 0; i < 30; i++) { try { await fetch(base); break; } catch { await new Promise(r => setTimeout(r, 40)); } }
+    let ready = false;
+    for (let i = 0; i < 100; i++) { try { const r = await fetch(base); ready = r.ok; if (ready) break; } catch {} await new Promise(r => setTimeout(r, 50)); }
+    assert.equal(ready, true, 'Máy chủ khảo sát phải khởi động trước khi kiểm thử API.');
     const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/pXcAAAAASUVORK5CYII=';
     assert.equal((await api('/api/admin/products', 'POST', { name: 'A', image: png })).status, 401);
     for (let i = 1; i <= 9; i++) assert.equal((await api('/api/admin/products', 'POST', { name: `Bao bì ${i}`, image: png }, 'admin-secret')).status, 201);
