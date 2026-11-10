@@ -6,7 +6,7 @@
 
 **Vai:** người quản trị tải ảnh; người tiêu dùng phân loại và trả lời; Google Sheet là nơi nhận phản hồi.
 
-**Quy tắc:** ảnh mẫu ghi chọn đúng 3 ảnh cho mỗi nhóm, nên phiên bản này yêu cầu 3 ảnh/nhóm (tổng 9); “tối đa 3” được hiểu là giới hạn cho mỗi nhóm. Các nhóm hiển thị là Economy, Mainstream, Upper Mainstream. Người dùng có thể bỏ chọn và chọn lại. Thư viện có thể nhiều hơn 9 ảnh.
+**Quy tắc:** ảnh mẫu ghi chọn đúng 3 ảnh cho mỗi nhóm, nên phiên bản này yêu cầu 3 ảnh/nhóm (tổng 9); “tối đa 3” được hiểu là giới hạn cho mỗi nhóm. Các nhóm hiển thị là Economy, Mainstream, Upper Mainstream. Người dùng có thể bỏ chọn và chọn lại. Thư viện chứa tối đa 30 ảnh.
 
 ## Intent và luồng (Kry UX)
 
@@ -26,7 +26,7 @@
 
 - Cấu hình: `version` và mảng sản phẩm `{ id, name, image }`, lưu trong Vercel Blob khi deploy, trong `data/survey.json` khi chạy cục bộ.
 - Phản hồi: Google Sheet là nguồn dữ liệu trên Vercel. Bản cục bộ sao lưu thêm `responses.jsonl` sau khi Sheet nhận. Mỗi bản ghi gồm `submissionId`, thời gian, `surveyVersion`, ID và tên ảnh theo nhóm, 4 câu trả lời.
-- Ảnh lưu bền vững trong Vercel Blob hoặc `data/images` khi chạy cục bộ, tối đa 5 MB/ảnh, kiểm tra định dạng.
+- Ảnh lưu bền vững trong Vercel Blob hoặc `data/images` khi chạy cục bộ, tối đa 3 MB/ảnh và 30 ảnh trong thư viện, kiểm tra định dạng.
 - `ADMIN_TOKEN` chỉ ở server; endpoint tải/xóa ảnh cần Bearer token.
 - Gửi Sheet qua Apps Script với `GOOGLE_SHEETS_SECRET`; Apps Script khóa khi ghi, khử trùng `submissionId` và chặn công thức Sheets.
 - Khi Sheet lỗi, server không báo thành công. Bản nháp ở `sessionStorage` để người trả lời thử lại.
