@@ -6,7 +6,7 @@
 
 **Vai:** người quản trị tải ảnh; người tiêu dùng phân loại và trả lời; Google Sheet là nơi nhận phản hồi.
 
-**Quy tắc:** ảnh mẫu ghi chọn đúng 3 ảnh cho mỗi nhóm, nên phiên bản này yêu cầu 3 ảnh/nhóm (tổng 9); “tối đa 3” được hiểu là giới hạn cho mỗi nhóm. Người dùng có thể bỏ chọn và chọn lại. Thư viện có thể nhiều hơn 9 ảnh.
+**Quy tắc:** ảnh mẫu ghi chọn đúng 3 ảnh cho mỗi nhóm, nên phiên bản này yêu cầu 3 ảnh/nhóm (tổng 9); “tối đa 3” được hiểu là giới hạn cho mỗi nhóm. Các nhóm hiển thị là Economy, Mainstream, Upper Mainstream. Người dùng có thể bỏ chọn và chọn lại. Thư viện có thể nhiều hơn 9 ảnh.
 
 ## Intent và luồng (Kry UX)
 
