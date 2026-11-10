@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { put, get, head, del, BlobNotFoundError } from '@vercel/blob';
+import { put, get, head, copy, del, BlobNotFoundError } from '@vercel/blob';
 
 const dataDir = resolve(process.env.DATA_DIR || join(import.meta.dirname, 'data'));
 const file = join(dataDir, 'survey.json');
@@ -25,7 +25,14 @@ export async function loadSurvey() {
   url.searchParams.set('v', randomUUID());
   const result = await get(url.toString(), { access: 'public' });
   if (!result || result.statusCode !== 200) throw new Error('Không thể đọc cấu hình khảo sát.');
-  return { data: JSON.parse(await new Response(result.stream).text()), etag: result.blob.etag };
+  if (result.blob.etag === metadata.etag) return { data: JSON.parse(await new Response(result.stream).text()), etag: metadata.etag };
+  await result.stream.cancel();
+  const snapshot = await copy(configPath, `survey/read-${randomUUID()}.json`, { access: 'public', contentType: 'application/json' });
+  try {
+    const fresh = await get(snapshot.url, { access: 'public' });
+    if (!fresh || fresh.statusCode !== 200) throw new Error('Không thể đọc cấu hình khảo sát mới nhất.');
+    return { data: JSON.parse(await new Response(fresh.stream).text()), etag: metadata.etag };
+  } finally { await del(snapshot.url).catch(error => console.error('Không thể dọn bản đọc cấu hình:', error)); }
 }
 
 export async function saveSurvey(data, etag) {
