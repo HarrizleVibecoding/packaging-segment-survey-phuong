@@ -8,7 +8,7 @@ import { initStorage, loadSurvey, saveSurvey, saveImage, dataDir, blobMode } fro
 const root = resolve(import.meta.dirname);
 const publicDir = join(root, 'public');
 const port = Number(process.env.PORT || 3000);
-const host = process.env.HOST || '127.0.0.1';
+const host = process.env.HOST || (process.env.VERCEL ? '0.0.0.0' : '127.0.0.1');
 const adminToken = process.env.ADMIN_TOKEN || '';
 const webhook = process.env.GOOGLE_SHEETS_WEBHOOK_URL || '';
 const webhookSecret = process.env.GOOGLE_SHEETS_SECRET || '';
@@ -109,6 +109,6 @@ export async function handler(req, res) {
     json(res, 404, { error: 'Không tìm thấy.' });
   } catch (error) { json(res, error.code === 'ENOENT' ? 404 : 400, { error: error.message || 'Có lỗi xảy ra.' }); }
 }
-if (process.env.VERCEL !== '1') createServer(handler).listen(port, host, () => console.log(`Survey: http://${host}:${port}`));
+createServer(handler).listen(port, host, () => console.log(`Survey: http://${host}:${port}`));
 export { validateSubmission, cleanSheet };
 
