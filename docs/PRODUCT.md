@@ -18,14 +18,14 @@
 | Giải thích | Nhớ mình đã chọn gì | 3 ảnh đã chọn hiển thị ở mỗi câu hỏi nhóm |
 | Gửi | Biết phản hồi đã nhận | Chỉ hiện hoàn tất sau khi Sheet xác nhận; lỗi giữ bản nháp |
 
-**Các màn:** phân loại, 4 câu hỏi, hoàn tất, quản trị ảnh, phóng to ảnh.
+**Các màn:** phân loại, 3 câu hỏi theo nhóm (chuyển tab tự do), hoàn tất, quản trị ảnh, phóng to ảnh.
 
-**Điều kiện nghiệm thu:** 9 ID ảnh không trùng; đúng 3/nhóm; 4 câu mở đủ ít nhất 10 ký tự; không thể gửi lại thành 2 hàng; thay đổi thư viện làm tăng phiên bản khảo sát.
+**Điều kiện nghiệm thu:** 9 ID ảnh không trùng; đúng 3/nhóm; 3 câu mở đủ ít nhất 10 ký tự; không thể gửi lại thành 2 hàng; thay đổi thư viện làm tăng phiên bản khảo sát.
 
 ## Nền hệ thống (Kry system)
 
 - Cấu hình: `version` và mảng sản phẩm `{ id, name, image }`, lưu trong Vercel Blob khi deploy, trong `data/survey.json` khi chạy cục bộ.
-- Phản hồi: Google Sheet là nguồn dữ liệu trên Vercel. Bản cục bộ sao lưu thêm `responses.jsonl` sau khi Sheet nhận. Mỗi bản ghi gồm `submissionId`, thời gian, `surveyVersion`, ID và tên ảnh theo nhóm, 4 câu trả lời.
+- Phản hồi: Google Sheet là nguồn dữ liệu trên Vercel. Bản cục bộ sao lưu thêm `responses.jsonl` sau khi Sheet nhận. Mỗi bản ghi gồm `submissionId`, thời gian, `surveyVersion`, ID và tên ảnh theo nhóm, 3 câu trả lời. Cột `upper_mainstream_signals` cũ trên Sheet được để trống.
 - Ảnh lưu bền vững trong Vercel Blob hoặc `data/images` khi chạy cục bộ, tối đa 3 MB/ảnh và 30 ảnh trong thư viện, kiểm tra định dạng.
 - `ADMIN_TOKEN` chỉ ở server; endpoint tải/xóa ảnh cần Bearer token.
 - Gửi Sheet qua Apps Script với `GOOGLE_SHEETS_SECRET`; Apps Script khóa khi ghi, khử trùng `submissionId` và chặn công thức Sheets.
