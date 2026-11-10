@@ -3,7 +3,7 @@ import { readFile, appendFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { initStorage, loadSurvey, saveSurvey, saveImage, dataDir, blobMode } from './storage.js';
+import { initStorage, loadSurvey, saveSurvey, saveImage, removeImage, dataDir, blobMode } from './storage.js';
 
 const root = resolve(import.meta.dirname);
 const staticFiles = {
@@ -16,6 +16,7 @@ const host = process.env.HOST || (process.env.VERCEL ? '0.0.0.0' : '127.0.0.1');
 const adminToken = process.env.ADMIN_TOKEN || '';
 const webhook = process.env.GOOGLE_SHEETS_WEBHOOK_URL || '';
 const webhookSecret = process.env.GOOGLE_SHEETS_SECRET || '';
+const sheetReady = Boolean(webhook && webhookSecret);
 const groups = ['budget', 'mainstream', 'premium'];
 const responseFile = join(dataDir, 'responses.jsonl');
 const pendingSubmissions = new Set();
@@ -37,7 +38,7 @@ function auth(req) {
 function cleanSheet(value) { const s = String(value || '').trim(); return /^[=+\-@]/.test(s) ? `'${s}` : s; }
 function validateSubmission(input, survey) {
   if (!input || typeof input !== 'object' || !/^[a-f0-9-]{36}$/i.test(input.submissionId || '')) throw new Error('Mã phản hồi không hợp lệ.');
-  if (input.surveyVersion !== survey.version) throw new Error('Bộ ảnh đã thay đổi. Vui lòng tải lại khảo sát.');
+  if (!Number.isSafeInteger(input.surveyVersion) || input.surveyVersion < 0 || input.surveyVersion > survey.version) throw new Error('Phiên bản khảo sát không hợp lệ.');
   const selected = input.selections;
   if (!selected || typeof selected !== 'object') throw new Error('Vui lòng phân loại bao bì.');
   const all = [];
@@ -49,11 +50,11 @@ function validateSubmission(input, survey) {
   const answers = input.answers;
   if (!answers || groups.concat('premiumSignals').some(key => typeof answers[key] !== 'string' || answers[key].trim().length < 10 || answers[key].length > 3000)) throw new Error('Vui lòng trả lời đủ 4 câu hỏi (ít nhất 10 ký tự mỗi câu).');
   const selectionNames = Object.fromEntries(groups.map(group => [group, selected[group].map(id => survey.products.find(p => p.id === id).name)]));
-  return { submissionId: input.submissionId, submittedAt: new Date().toISOString(), surveyVersion: survey.version, selections: selected, selectionNames, answers: Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, cleanSheet(v)])) };
+  return { submissionId: input.submissionId, submittedAt: new Date().toISOString(), surveyVersion: input.surveyVersion, selections: selected, selectionNames, answers: Object.fromEntries(Object.entries(answers).map(([k, v]) => [k, cleanSheet(v)])) };
 }
 async function alreadySubmitted(id) { if (blobMode || !existsSync(responseFile)) return false; return (await readFile(responseFile, 'utf8')).split('\n').some(line => line.includes(`"submissionId":"${id}"`)); }
 async function sendToSheet(record) {
-  if (!webhook) throw new Error('Google Sheets chưa được cấu hình trên máy chủ.');
+  if (!sheetReady) throw new Error('Google Sheets chưa được cấu hình trên máy chủ.');
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 12000);
   try {
     const response = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...record, secret: webhookSecret }), signal: controller.signal });
@@ -64,8 +65,8 @@ async function sendToSheet(record) {
 export async function handler(req, res) {
   try {
     const path = new URL(req.url, `http://${req.headers.host}`).pathname;
-    if (req.method === 'GET' && path === '/api/survey') { const { data } = await loadSurvey(); return json(res, 200, data); }
-    if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: Boolean(webhook), adminConfigured: Boolean(adminToken) });
+    if (req.method === 'GET' && path === '/api/survey') { const { data } = await loadSurvey(); return json(res, 200, { ...data, acceptingResponses: sheetReady }); }
+    if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: sheetReady, adminConfigured: Boolean(adminToken) });
     if (req.method === 'POST' && path === '/api/admin/products') {
       if (!auth(req)) return json(res, 401, { error: 'Mã quản trị không đúng hoặc chưa được cấu hình.' });
       const input = await body(req);
@@ -73,24 +74,33 @@ export async function handler(req, res) {
       const match = input.image.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
       if (!match) throw new Error('Chỉ nhận ảnh PNG, JPEG hoặc WebP.');
       const bytes = Buffer.from(match[2], 'base64');
-      if (bytes.length > 5_000_000) throw new Error('Ảnh tối đa 5 MB.');
+      if (bytes.length > 3_000_000) throw new Error('Ảnh tối đa 3 MB.');
       const kind = match[1];
       const valid = kind === 'png' ? bytes.subarray(0, 4).equals(Buffer.from([137,80,78,71])) : kind === 'jpeg' ? bytes.subarray(0, 3).equals(Buffer.from([255,216,255])) : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
       if (!valid) throw new Error('Nội dung ảnh không hợp lệ.');
       const id = randomUUID(), ext = kind === 'jpeg' ? 'jpg' : kind;
+      const { data: survey, etag } = await loadSurvey();
       const image = await saveImage(id, ext, bytes);
-      const { data: survey, etag } = await loadSurvey(); survey.products.push({ id, name: input.name.trim(), image }); survey.version++;
-      await saveSurvey(survey, etag); return json(res, 201, survey);
+      try {
+        survey.products.push({ id, name: input.name.trim(), image }); survey.version++;
+        await saveSurvey(survey, etag);
+      } catch (error) { await removeImage(image).catch(() => {}); throw error; }
+      return json(res, 201, survey);
     }
     if (req.method === 'DELETE' && path.startsWith('/api/admin/products/')) {
       if (!auth(req)) return json(res, 401, { error: 'Không có quyền quản trị.' });
       const id = path.split('/').at(-1), { data: survey, etag } = await loadSurvey(), length = survey.products.length;
+      const removed = survey.products.find(p => p.id === id);
       survey.products = survey.products.filter(p => p.id !== id);
       if (length === survey.products.length) return json(res, 404, { error: 'Không tìm thấy bao bì.' });
-      survey.version++; await saveSurvey(survey, etag); return json(res, 200, survey);
+      survey.version++; await saveSurvey(survey, etag);
+      await removeImage(removed.image).catch(error => console.error('Ảnh không thể xóa khỏi kho:', error));
+      return json(res, 200, survey);
     }
     if (req.method === 'POST' && path === '/api/responses') {
       const input = await body(req, 100_000), { data: survey } = await loadSurvey();
+      if (input?.surveyVersion !== survey.version && groups.some(group => input?.selections?.[group]?.some(id => !survey.products.some(p => p.id === id)))) return json(res, 409, { code: 'SURVEY_CHANGED', error: 'Một bao bì đã chọn không còn trong khảo sát. Vui lòng chọn lại.' });
+      if (!sheetReady) return json(res, 503, { error: 'Khảo sát chưa sẵn sàng nhận phản hồi.' });
       const record = validateSubmission(input, survey);
       if (await alreadySubmitted(record.submissionId)) return json(res, 200, { ok: true, duplicate: true });
       if (pendingSubmissions.has(record.submissionId)) return json(res, 409, { error: 'Phản hồi đang được gửi. Vui lòng chờ.' });
