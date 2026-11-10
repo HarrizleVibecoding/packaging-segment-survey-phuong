@@ -10,9 +10,10 @@ import { once } from 'node:events';
 test('upload, phân loại, gửi Sheet và chống gửi trùng', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pack-survey-'));
   let sheetRows = 0;
+  let lastSheetPayload;
   const sheet = createServer(async (req, res) => {
     let raw = ''; for await (const part of req) raw += part;
-    const input = JSON.parse(raw); assert.equal(input.secret, 'secret'); sheetRows++;
+    const input = JSON.parse(raw); assert.equal(input.secret, 'secret'); lastSheetPayload = input; sheetRows++;
     res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}');
   });
   sheet.listen(0, '127.0.0.1'); await once(sheet, 'listening');
@@ -30,9 +31,10 @@ test('upload, phân loại, gửi Sheet và chống gửi trùng', async () => {
     const survey = (await api('/api/survey', 'GET')).data;
     assert.equal(survey.products.length, 9);
     const ids = survey.products.map(p => p.id);
-    const payload = { submissionId: crypto.randomUUID(), surveyVersion: survey.version, selections: { budget: ids.slice(0, 3), mainstream: ids.slice(3, 6), premium: ids.slice(6, 9) }, answers: { budget: 'Lý do nhóm giá rẻ', mainstream: 'Lý do nhóm phổ thông', premium: 'Lý do nhóm cao cấp', premiumSignals: 'Dấu hiệu bao bì cao cấp' } };
+    const payload = { submissionId: crypto.randomUUID(), surveyVersion: survey.version, selections: { budget: ids.slice(0, 3), mainstream: ids.slice(3, 6), premium: ids.slice(6, 9) }, answers: { budget: 'Lý do nhóm giá rẻ', mainstream: 'Lý do nhóm phổ thông', premium: 'Lý do nhóm cao cấp' } };
     assert.equal((await api('/api/responses', 'POST', { ...payload, selections: { ...payload.selections, premium: ids.slice(0, 3) } })).status, 400);
     assert.equal((await api('/api/responses', 'POST', payload)).status, 201);
+    assert.equal(lastSheetPayload.answers.premiumSignals, '', 'Cột cũ trên Sheet được giữ trống.');
     assert.equal((await api('/api/responses', 'POST', payload)).data.duplicate, true);
     assert.equal(sheetRows, 1);
     assert.equal((await api('/api/admin/products', 'POST', { name: 'Quá lớn', image: 'data:image/png;base64,' + Buffer.alloc(3_000_001).toString('base64') }, 'admin-secret')).status, 400);
