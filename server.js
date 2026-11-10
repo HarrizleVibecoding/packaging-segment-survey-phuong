@@ -38,7 +38,6 @@ function auth(req) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 function cleanSheet(value) { const s = String(value || '').trim(); return /^[=+\-@]/.test(s) ? `'${s}` : s; }
-function webhookHost() { try { return webhook ? new URL(webhook).host : ''; } catch { return ''; } }
 function httpError(status, message) { const error = new Error(message); error.status = status; return error; }
 async function updateSurvey(change, firstLoad) {
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -87,7 +86,7 @@ export async function handler(req, res) {
   try {
     const path = new URL(req.url, `http://${req.headers.host}`).pathname;
     if (req.method === 'GET' && path === '/api/survey') { const { data } = await loadSurvey(); return json(res, 200, { ...data, acceptingResponses: sheetReady }); }
-    if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: sheetReady, adminConfigured: Boolean(adminToken), responseEndpoint: webhookHost() });
+    if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: sheetReady, adminConfigured: Boolean(adminToken) });
     if (req.method === 'POST' && path === '/api/admin/products') {
       if (!auth(req)) return json(res, 401, { error: 'Mã quản trị không đúng hoặc chưa được cấu hình.' });
       const input = await body(req);
