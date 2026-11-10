@@ -8,7 +8,7 @@ const groups = [
 ];
 let survey = { version: 0, products: [] };
 let selected = { budget: [], mainstream: [], premium: [] };
-let answers = { budget: '', mainstream: '', premium: '', premiumSignals: '' };
+let answers = { budget: '', mainstream: '', premium: '' };
 let submissionId = crypto.randomUUID();
 let step = 'sort';
 let questionIndex = 0;
@@ -33,10 +33,10 @@ function restore() {
         used.add(id); return true;
       }).slice(0, 3);
     }
-    for (const key of ['budget', 'mainstream', 'premium', 'premiumSignals']) answers[key] = typeof d.answers[key] === 'string' ? d.answers[key].slice(0, 3000) : '';
+    for (const key of ['budget', 'mainstream', 'premium']) answers[key] = typeof d.answers[key] === 'string' ? d.answers[key].slice(0, 3000) : '';
     submissionId = /^[a-f0-9-]{36}$/i.test(d.submissionId || '') ? d.submissionId : crypto.randomUUID();
     step = d.step === 'questions' && groups.every(g => selected[g.id].length === 3) ? 'questions' : 'sort';
-    questionIndex = Number.isInteger(d.questionIndex) && d.questionIndex >= 0 && d.questionIndex <= 3 ? d.questionIndex : 0;
+    questionIndex = Number.isInteger(d.questionIndex) && d.questionIndex >= 0 && d.questionIndex < groups.length ? d.questionIndex : 0;
   } catch { sessionStorage.removeItem('surveyDraft'); }
 }
 function hero(title, subtitle, eyebrow, number) { return `<section class="hero"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="sub">${subtitle}</p></div><span class="step">BƯỚC ${number} / 2</span></section>`; }
@@ -62,28 +62,23 @@ assignDialog.onclick = e => { if (e.target === assignDialog) assignDialog.close(
 function zoom(id) { const p = find(id); if (!p) return; document.querySelector('#zoomImage').src = p.image; document.querySelector('#zoomImage').alt = p.name; document.querySelector('#zoomCaption').textContent = `Bao bì ${productNumber(id)} · ${p.name}`; dialog.showModal(); }
 document.querySelector('#closeZoom').onclick = () => dialog.close(); dialog.onclick = e => { if (e.target === dialog) dialog.close(); };
 function renderQuestions() {
-  const group = groups[Math.min(questionIndex, 2)];
-  const key = questionIndex === 3 ? 'premiumSignals' : group.id;
-  const last = questionIndex === 3;
-  const title = last ? 'Dấu hiệu nào giúp bạn nhận diện phân khúc Upper Mainstream?' : `Vì sao bạn xếp các bao bì này vào nhóm ${group.name}?`;
-  const description = last ? 'Nhìn lại các bao bì bạn đã chọn và mô tả chi tiết nào tạo cảm nhận cao cấp hơn.' : 'Chạm vào ảnh để phóng to trước khi viết đánh giá của bạn.';
-  const tabs = [...groups.map(g => g.name), 'Dấu hiệu nhận diện'];
-  const answerKeys = [...groups.map(g => g.id), 'premiumSignals'];
-  app.innerHTML = hero(title, description, `02 / LÝ DO & CẢM NHẬN · ${questionIndex + 1}/4`, 2)
-    + `<nav class="question-tabs" aria-label="Các câu hỏi">${tabs.map((name, i) => `<button type="button" class="question-tab ${i === questionIndex ? 'active' : ''}" data-question="${i}" ${answerKeys.slice(0, i).some(key => answers[key].trim().length < 10) ? 'disabled' : ''} ${i === questionIndex ? 'aria-current="step"' : ''}>2.${i + 1} ${name}</button>`).join('')}</nav>`
+  const group = groups[questionIndex];
+  const key = group.id;
+  const nextUnanswered = groups.findIndex((g, i) => i !== questionIndex && answers[g.id].trim().length < 10);
+  app.innerHTML = hero(`Vì sao bạn xếp các bao bì này vào nhóm ${group.name}?`, 'Chạm vào ảnh để phóng to trước khi viết đánh giá của bạn.', `02 / LÝ DO & CẢM NHẬN · ${questionIndex + 1}/3`, 2)
+    + `<nav class="question-tabs" aria-label="Các nhóm đánh giá">${groups.map((g, i) => `<button type="button" class="question-tab ${i === questionIndex ? 'active' : ''}" data-question="${i}" ${i === questionIndex ? 'aria-current="step"' : ''}>2.${i + 1} ${g.name}</button>`).join('')}</nav>`
     + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
-    + `<section class="question-stage"><p class="question-intro">${last ? 'Các bao bì bạn đã xếp vào Upper Mainstream' : `3 bao bì bạn đã xếp vào ${group.name}`}</p><div class="question-products">${selected[group.id].map(id => { const p = find(id); return p ? `<div class="question-product"><button type="button" data-zoom="${id}" aria-label="Phóng to bao bì ${productNumber(id)}: ${esc(p.name)}"><span class="product-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><span class="product-magnify" aria-hidden="true">⌕</span></button><strong>${esc(p.name)}</strong></div>` : ''; }).join('')}</div><label for="questionAnswer">${last ? 'Dấu hiệu nào trên các bao bì này khiến bạn nghĩ chúng thuộc phân khúc Upper Mainstream?' : `Đánh giá của bạn cho nhóm ${group.name}`}</label><textarea id="questionAnswer" maxlength="3000" placeholder="${last ? 'Mô tả màu sắc, kiểu chữ, chất liệu, bố cục hoặc chi tiết bạn nhận thấy...' : `Viết lý do bạn xếp các bao bì này vào nhóm ${group.name}...`}">${esc(answers[key])}</textarea></section>`
-    + `<div class="actions question-actions"><button id="back" class="button secondary">← ${questionIndex ? 'Câu trước' : 'Quay lại chọn nhóm'}</button><button id="nextQuestion" class="button" ${last && !sheetConfigured ? 'disabled' : ''}>${last ? 'Gửi phản hồi →' : `Tiếp: ${tabs[questionIndex + 1]} →`}</button></div>`;
+    + `<section class="question-stage"><p class="question-intro">3 bao bì bạn đã xếp vào ${group.name}</p><div class="question-products">${selected[group.id].map(id => { const p = find(id); return p ? `<div class="question-product"><button type="button" data-zoom="${id}" aria-label="Phóng to bao bì ${productNumber(id)}: ${esc(p.name)}"><span class="product-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><span class="product-magnify" aria-hidden="true">⌕</span></button><strong>${esc(p.name)}</strong></div>` : ''; }).join('')}</div><label for="questionAnswer">Đánh giá của bạn cho nhóm ${group.name}</label><textarea id="questionAnswer" maxlength="3000" placeholder="Viết lý do bạn xếp các bao bì này vào nhóm ${group.name}...">${esc(answers[key])}</textarea></section>`
+    + `<div class="actions question-actions"><button id="back" class="button secondary">← Quay lại chọn nhóm</button><button id="nextQuestion" class="button" ${nextUnanswered === -1 && !sheetConfigured ? 'disabled' : ''}>${nextUnanswered === -1 ? 'Gửi phản hồi →' : `Tiếp: ${groups[nextUnanswered].name} →`}</button></div>`;
   app.querySelectorAll('[data-zoom]').forEach(b => b.onclick = () => zoom(b.dataset.zoom));
   app.querySelector('#questionAnswer').oninput = e => { answers[key] = e.target.value; persist(); };
   app.querySelectorAll('[data-question]').forEach(b => b.onclick = () => { questionIndex = Number(b.dataset.question); error = ''; persist(); render(); window.scrollTo(0, 0); });
-  app.querySelector('#back').onclick = () => { error = ''; if (questionIndex) questionIndex--; else step = 'sort'; persist(); render(); window.scrollTo(0, 0); };
-  app.querySelector('#nextQuestion').onclick = () => { if (answers[key].trim().length < 10) { error = 'Vui lòng viết ít nhất 10 ký tự trước khi tiếp tục.'; renderQuestions(); app.querySelector('#questionAnswer').focus(); return; } error = ''; if (last) submit(); else { questionIndex++; persist(); render(); window.scrollTo(0, 0); } };
+  app.querySelector('#back').onclick = () => { error = ''; step = 'sort'; persist(); render(); window.scrollTo(0, 0); };
+  app.querySelector('#nextQuestion').onclick = () => { if (answers[key].trim().length < 10) { error = 'Vui lòng viết ít nhất 10 ký tự trước khi tiếp tục.'; renderQuestions(); app.querySelector('#questionAnswer').focus(); return; } error = ''; if (nextUnanswered === -1) submit(); else { questionIndex = nextUnanswered; persist(); render(); window.scrollTo(0, 0); } };
 }
 async function submit() {
-  const answerKeys = [...groups.map(g => g.id), 'premiumSignals'];
-  const missing = answerKeys.findIndex(key => answers[key].trim().length < 10);
-  if (missing !== -1) { questionIndex = missing; error = 'Vui lòng trả lời đủ 4 câu hỏi, mỗi câu ít nhất 10 ký tự.'; persist(); renderQuestions(); return; }
+  const missing = groups.findIndex(g => answers[g.id].trim().length < 10);
+  if (missing !== -1) { questionIndex = missing; error = 'Vui lòng trả lời đủ 3 câu hỏi, mỗi câu ít nhất 10 ký tự.'; persist(); renderQuestions(); return; }
   const button = app.querySelector('#nextQuestion'); button.disabled = true; button.textContent = 'Đang gửi…'; error = '';
   try { const response = await fetch('/api/responses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ submissionId, surveyVersion: survey.version, selections: selected, answers }) }); const result = await response.json(); if (response.status === 409 && result.code === 'SURVEY_CHANGED') { const latest = await fetch('/api/survey'); if (latest.ok) { survey = await latest.json(); sheetConfigured = survey.acceptingResponses; groups.forEach(g => selected[g.id] = selected[g.id].filter(id => find(id))); step = 'sort'; questionIndex = 0; error = result.error; persist(); render(); return; } } if (!response.ok || !result.ok) throw new Error(result.error || 'Không thể gửi phản hồi.'); step = 'done'; sessionStorage.removeItem('surveyDraft'); render(); window.scrollTo(0, 0); }
   catch (e) { error = `${e.message} Câu trả lời của bạn vẫn được giữ lại. Hãy thử gửi lại.`; renderQuestions(); }
