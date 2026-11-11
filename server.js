@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { BlobPreconditionFailedError } from '@vercel/blob';
-import { initStorage, loadSurvey, saveSurvey, saveImage, removeImage, dataDir, blobMode } from './storage.js';
+import { initStorage, loadRegistry, saveRegistry, loadSurvey, saveSurvey, saveImage, removeImage, dataDir, blobMode, defaultSlug, isPreview } from './storage.js';
 
 const root = resolve(import.meta.dirname);
 const staticFiles = {
@@ -20,6 +20,9 @@ const webhookSecret = process.env.GOOGLE_SHEETS_SECRET || '';
 const sheetReady = Boolean(webhook && webhookSecret);
 const groups = ['budget', 'mainstream', 'premium'];
 const maxProducts = 30;
+const minProducts = 9;
+const maxSurveys = 20;
+const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const responseFile = join(dataDir, 'responses.jsonl');
 const pendingSubmissions = new Set();
 const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
@@ -39,18 +42,44 @@ function auth(req) {
 }
 function cleanSheet(value) { const s = String(value || '').trim(); return /^[=+\-@]/.test(s) ? `'${s}` : s; }
 function httpError(status, message) { const error = new Error(message); error.status = status; return error; }
-async function updateSurvey(change, firstLoad) {
+// Load → change → save with an etag check, retrying when another request saved in between.
+async function updateJson(load, save, change, firstLoad) {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const { data, etag } = attempt === 0 && firstLoad ? firstLoad : await loadSurvey();
+    const { data, etag } = attempt === 0 && firstLoad ? firstLoad : await load();
     const result = change(data);
-    data.version++;
-    try { await saveSurvey(data, etag); return { survey: data, result }; }
+    try { await save(data, etag); return { data, result }; }
     catch (error) {
       if (!(error instanceof BlobPreconditionFailedError)) throw error;
-      if (attempt === 4) throw httpError(503, 'Thư viện đang được cập nhật. Vui lòng thử lại sau vài giây.');
+      if (attempt === 4) throw httpError(503, 'Dữ liệu đang được cập nhật. Vui lòng thử lại sau vài giây.');
     }
   }
 }
+async function updateSurvey(slug, change, firstLoad) {
+  const { data, result } = await updateJson(() => loadSurvey(slug), (data, etag) => saveSurvey(slug, data, etag), data => { const result = change(data); data.version++; return result; }, firstLoad);
+  return { survey: data, result };
+}
+const updateRegistry = change => updateJson(loadRegistry, saveRegistry, change);
+
+function slugify(name) {
+  const slug = name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+  return slug || 'khao-sat';
+}
+const tabName = name => name.replace(/[\[\]*?:/\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+// Production: the original survey writes to the first tab (gid 0), others to a tab named after them.
+// Preview deployments always write to "TEST - ..." tabs so test answers never mix with real ones.
+const sheetTabFor = meta => isPreview ? `TEST - ${meta.sheetTab || tabName(meta.name)}` : meta.sheetTab;
+function requestedSlug(value) {
+  const slug = value || defaultSlug;
+  if (typeof slug !== 'string' || slug.length > 40 || !slugPattern.test(slug)) throw httpError(404, 'Không tìm thấy khảo sát.');
+  return slug;
+}
+async function surveyMeta(slug) {
+  const meta = (await loadRegistry()).data.surveys.find(s => s.slug === slug);
+  if (!meta) throw httpError(404, 'Không tìm thấy khảo sát.');
+  return meta;
+}
+const accepting = (meta, survey) => sheetReady && meta.open && survey.products.length >= minProducts;
+
 function validateSubmission(input, survey) {
   if (!input || typeof input !== 'object' || !/^[a-f0-9-]{36}$/i.test(input.submissionId || '')) throw new Error('Mã phản hồi không hợp lệ.');
   if (!Number.isSafeInteger(input.surveyVersion) || input.surveyVersion < 0 || input.surveyVersion > survey.version) throw new Error('Phiên bản khảo sát không hợp lệ.');
@@ -73,22 +102,69 @@ function validateSubmission(input, survey) {
   return { submissionId: input.submissionId, submittedAt: new Date().toISOString(), surveyVersion: input.surveyVersion, selections: selected, selectionNames, answers: { ...Object.fromEntries(groups.map(key => [key, cleanSheet(answers[key])])), premiumSignals: '' }, respondent: { name: cleanSheet(respondent.name), phone: cleanSheet(phone) } };
 }
 async function alreadySubmitted(id) { if (blobMode || !existsSync(responseFile)) return false; return (await readFile(responseFile, 'utf8')).split('\n').some(line => line.includes(`"submissionId":"${id}"`)); }
+// Named tabs send the secret as "auth": an Apps Script that predates multi-survey support rejects
+// those requests (unauthorized) instead of silently writing them into the first tab.
 async function sendToSheet(record) {
   if (!sheetReady) throw new Error('Google Sheets chưa được cấu hình trên máy chủ.');
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 12000);
   try {
-    const response = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...record, secret: webhookSecret }), signal: controller.signal });
-    const result = await response.json();
-    if (!response.ok || result.ok !== true) throw new Error('Google Sheets từ chối phản hồi.');
+    const response = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...record, ...(record.sheetTab ? { auth: webhookSecret } : { secret: webhookSecret }) }), signal: controller.signal });
+    const result = await response.json().catch(() => ({ error: `non-JSON response (HTTP ${response.status})` }));
+    if (!response.ok || result.ok !== true) {
+      console.error('Google Sheets rejected response', { status: response.status, tab: record.sheetTab || '(gid 0)', error: result.error });
+      throw new Error(result.error === 'unauthorized' && record.sheetTab ? 'Google Sheets từ chối phản hồi (Apps Script có thể chưa được cập nhật bản mới).' : 'Google Sheets từ chối phản hồi.');
+    }
   } finally { clearTimeout(timeout); }
 }
+async function adminSurveyList() {
+  const { data } = await loadRegistry();
+  return Promise.all(data.surveys.map(async meta => {
+    const { data: survey } = await loadSurvey(meta.slug);
+    return { slug: meta.slug, name: meta.name, open: meta.open, productCount: survey.products.length, acceptingResponses: accepting(meta, survey), sheetTab: sheetTabFor(meta) || 'Trang đầu tiên (gid 0)' };
+  }));
+}
+
 export async function handler(req, res) {
   try {
-    const path = new URL(req.url, `http://${req.headers.host}`).pathname;
-    if (req.method === 'GET' && path === '/api/survey') { const { data } = await loadSurvey(); return json(res, 200, { ...data, acceptingResponses: sheetReady }); }
-    if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: sheetReady, adminConfigured: Boolean(adminToken) });
-    if (req.method === 'POST' && path === '/api/admin/products') {
+    const url = new URL(req.url, `http://${req.headers.host}`), path = url.pathname;
+    if (req.method === 'GET' && path === '/api/survey') {
+      const slug = requestedSlug(url.searchParams.get('s')), meta = await surveyMeta(slug), { data } = await loadSurvey(slug);
+      return json(res, 200, { ...data, slug, name: meta.name, open: meta.open, acceptingResponses: accepting(meta, data) });
+    }
+    if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: sheetReady, adminConfigured: Boolean(adminToken), preview: isPreview });
+    if (path === '/api/admin/surveys' || path.startsWith('/api/admin/surveys/') || path.startsWith('/api/admin/products')) {
       if (!auth(req)) return json(res, 401, { error: 'Mã quản trị không đúng hoặc chưa được cấu hình.' });
+    }
+    if (req.method === 'GET' && path === '/api/admin/surveys') return json(res, 200, { surveys: await adminSurveyList() });
+    if (req.method === 'POST' && path === '/api/admin/surveys') {
+      const input = await body(req, 10_000);
+      const name = typeof input?.name === 'string' ? input.name.replace(/\s+/g, ' ').trim() : '';
+      if (name.length < 2 || name.length > 60) throw new Error('Tên khảo sát cần từ 2 đến 60 ký tự.');
+      const { result: created } = await updateRegistry(data => {
+        if (data.surveys.length >= maxSurveys) throw httpError(409, `Tối đa ${maxSurveys} khảo sát.`);
+        if (data.surveys.some(s => s.name.toLowerCase() === name.toLowerCase())) throw httpError(409, 'Đã có khảo sát cùng tên.');
+        const base = slugify(name); let slug = base;
+        for (let i = 2; data.surveys.some(s => s.slug === slug); i++) slug = `${base}-${i}`;
+        let sheetTab = tabName(name) || slug;
+        for (let i = 2; data.surveys.some(s => s.sheetTab === sheetTab); i++) sheetTab = `${tabName(name)} (${i})`;
+        const meta = { slug, name, sheetTab, open: true };
+        data.surveys.push(meta);
+        return meta;
+      });
+      return json(res, 201, { survey: created, surveys: await adminSurveyList() });
+    }
+    if (req.method === 'PATCH' && path.startsWith('/api/admin/surveys/')) {
+      const slug = requestedSlug(path.split('/').at(-1)), input = await body(req, 10_000);
+      if (typeof input?.open !== 'boolean') throw new Error('Trạng thái không hợp lệ.');
+      await updateRegistry(data => {
+        const meta = data.surveys.find(s => s.slug === slug);
+        if (!meta) throw httpError(404, 'Không tìm thấy khảo sát.');
+        meta.open = input.open;
+      });
+      return json(res, 200, { surveys: await adminSurveyList() });
+    }
+    if (req.method === 'POST' && path === '/api/admin/products') {
+      const slug = requestedSlug(url.searchParams.get('s')); await surveyMeta(slug);
       const input = await body(req);
       if (typeof input.name !== 'string' || !input.name.trim() || input.name.length > 100 || typeof input.image !== 'string') throw new Error('Tên hoặc ảnh không hợp lệ.');
       const match = input.image.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
@@ -99,11 +175,11 @@ export async function handler(req, res) {
       const valid = kind === 'png' ? bytes.subarray(0, 4).equals(Buffer.from([137,80,78,71])) : kind === 'jpeg' ? bytes.subarray(0, 3).equals(Buffer.from([255,216,255])) : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
       if (!valid) throw new Error('Nội dung ảnh không hợp lệ.');
       const id = randomUUID(), ext = kind === 'jpeg' ? 'jpg' : kind;
-      const firstLoad = await loadSurvey();
+      const firstLoad = await loadSurvey(slug);
       if (firstLoad.data.products.length >= maxProducts) throw httpError(409, 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.');
       const image = await saveImage(id, ext, bytes);
       try {
-        const { survey } = await updateSurvey(data => {
+        const { survey } = await updateSurvey(slug, data => {
           if (data.products.length >= maxProducts) throw httpError(409, 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.');
           data.products.push({ id, name: input.name.trim(), image });
         }, firstLoad);
@@ -111,9 +187,9 @@ export async function handler(req, res) {
       } catch (error) { await removeImage(image).catch(() => {}); throw error; }
     }
     if (req.method === 'DELETE' && path.startsWith('/api/admin/products/')) {
-      if (!auth(req)) return json(res, 401, { error: 'Không có quyền quản trị.' });
+      const slug = requestedSlug(url.searchParams.get('s')); await surveyMeta(slug);
       const id = path.split('/').at(-1);
-      const { survey, result: removed } = await updateSurvey(data => {
+      const { survey, result: removed } = await updateSurvey(slug, data => {
         const removed = data.products.find(p => p.id === id);
         if (!removed) throw httpError(404, 'Không tìm thấy bao bì.');
         data.products = data.products.filter(p => p.id !== id);
@@ -123,10 +199,12 @@ export async function handler(req, res) {
       return json(res, 200, survey);
     }
     if (req.method === 'POST' && path === '/api/responses') {
-      const input = await body(req, 100_000), { data: survey } = await loadSurvey();
+      const input = await body(req, 100_000);
+      const slug = requestedSlug(input?.survey), meta = await surveyMeta(slug), { data: survey } = await loadSurvey(slug);
       if (input?.surveyVersion !== survey.version && groups.some(group => input?.selections?.[group]?.some(id => !survey.products.some(p => p.id === id)))) return json(res, 409, { code: 'SURVEY_CHANGED', error: 'Một bao bì đã chọn không còn trong khảo sát. Vui lòng chọn lại.' });
+      if (!meta.open) return json(res, 409, { code: 'SURVEY_CLOSED', error: 'Khảo sát này đã đóng, không nhận thêm phản hồi.' });
       if (!sheetReady) return json(res, 503, { error: 'Khảo sát chưa sẵn sàng nhận phản hồi.' });
-      const record = validateSubmission(input, survey);
+      const record = { survey: slug, surveyName: meta.name, sheetTab: sheetTabFor(meta), ...validateSubmission(input, survey) };
       if (await alreadySubmitted(record.submissionId)) return json(res, 200, { ok: true, duplicate: true });
       if (pendingSubmissions.has(record.submissionId)) return json(res, 409, { error: 'Phản hồi đang được gửi. Vui lòng chờ.' });
       pendingSubmissions.add(record.submissionId);
@@ -141,7 +219,8 @@ export async function handler(req, res) {
       const bytes = await readFile(join(dataDir, 'images', filename)); res.writeHead(200, { 'Content-Type': mime[extname(filename)], 'Cache-Control': 'public, max-age=86400' }); return res.end(bytes);
     }
     if (req.method === 'GET') {
-      const requested = path === '/' ? 'index.html' : path.slice(1);
+      // Survey links (/s/<slug>) serve the same page; the frontend reads the slug from the URL.
+      const requested = path === '/' || /^\/s\/[a-z0-9-]+\/?$/.test(path) ? 'index.html' : path.slice(1);
       if (!staticFiles[requested]) return json(res, 404, { error: 'Không tìm thấy.' });
       const bytes = await readFile(staticFiles[requested]); res.writeHead(200, { 'Content-Type': mime[extname(requested)] }); return res.end(bytes);
     }
@@ -150,5 +229,4 @@ export async function handler(req, res) {
 }
 export default handler;
 if (process.env.VERCEL !== '1') createServer(handler).listen(port, host, () => console.log(`Survey: http://${host}:${port}`));
-export { validateSubmission, cleanSheet };
-
+export { validateSubmission, cleanSheet, slugify };
