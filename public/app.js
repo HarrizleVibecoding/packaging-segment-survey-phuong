@@ -191,7 +191,7 @@ function renderAdmin() {
     + `<p class="survey-status ${reason ? 'off' : 'on'}"><span class="status-dot" aria-hidden="true"></span>${reason ? `Chưa nhận phản hồi: ${esc(reason)}` : 'Đang nhận phản hồi'}</p>`
     + `<dl class="survey-meta"><div><dt>Link khảo sát</dt><dd><code>${esc(link)}</code></dd></div><div><dt>Ghi vào tab Sheet</dt><dd>${esc(current.sheetTab)}</dd></div></dl>`
     + `<details class="new-survey"><summary>+ Tạo khảo sát mới</summary><div class="new-survey-row"><input id="newSurveyName" maxlength="60" placeholder="Ví dụ: Khăn giấy ướt" aria-label="Tên khảo sát mới"><button id="createSurvey" class="button" type="button">Tạo khảo sát</button></div><p class="sub">Khảo sát mới dùng chung 3 nhóm và 3 câu hỏi. Link được tạo từ tên, phản hồi ghi vào tab Sheet cùng tên.</p></details><p id="surveyMessage" class="sub" role="status"></p></section>`
-    + `<div class="admin-grid"><section class="panel"><h2>Thêm bao bì · ${esc(current.name)}</h2><label class="field">Hình ảnh (chọn tối đa ${maxUploadBatch} ảnh mỗi lần; PNG, JPG, WebP; tối đa 3 MB/ảnh)<input id="image" type="file" multiple accept="image/png,image/jpeg,image/webp"></label><div id="uploadList" class="upload-list"></div><button id="upload" class="button" ${products.length >= 30 ? 'disabled' : ''}>Tải ảnh lên</button><p id="adminMessage" class="sub" style="margin-top:16px"></p></section><section class="panel"><h2>Danh sách ảnh · ${products.length}/30</h2><div class="admin-list">${products.map((p, i) => `<div class="admin-item"><span class="admin-number">${String(i + 1).padStart(2, '0')}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><strong title="${esc(p.name)}">${esc(p.name)}</strong><button data-delete="${p.id}" aria-label="Xóa ${esc(p.name)} khỏi khảo sát">Xóa</button></div>`).join('')}</div>${products.length ? '' : '<p class="sub">Chưa có ảnh nào. Hãy thêm ít nhất 9 ảnh.</p>'}</section></div><div class="actions"><a href="/s/${current.slug}" class="button secondary" style="text-decoration:none">← Xem khảo sát</a></div>`;
+    + `<div class="admin-grid"><section class="panel"><h2>Thêm bao bì · ${esc(current.name)}</h2><label class="field">Hình ảnh (chọn tối đa ${maxUploadBatch} ảnh mỗi lần; PNG, JPG, WebP; tối đa 3 MB/ảnh)<input id="image" type="file" multiple accept="image/png,image/jpeg,image/webp"></label><div id="uploadList" class="upload-list"></div><button id="upload" class="button" disabled>Tải ảnh lên</button><p id="adminMessage" class="sub" style="margin-top:16px"></p></section><section class="panel"><h2>Danh sách ảnh · ${products.length}/30</h2><div class="admin-list">${products.map((p, i) => `<div class="admin-item"><span class="admin-number">${String(i + 1).padStart(2, '0')}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><strong title="${esc(p.name)}">${esc(p.name)}</strong><button data-delete="${p.id}" aria-label="Xóa ${esc(p.name)} khỏi khảo sát">Xóa</button></div>`).join('')}</div>${products.length ? '' : '<p class="sub">Chưa có ảnh nào. Hãy thêm ít nhất 9 ảnh.</p>'}</section></div><div class="actions"><a href="/s/${current.slug}" class="button secondary" style="text-decoration:none">← Xem khảo sát</a></div>`;
   const message = app.querySelector('#adminMessage'), surveyMessage = app.querySelector('#surveyMessage');
   if (products.length >= 30) message.textContent = 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.';
   const refresh = async (slug = adminSlug) => { await loadAdmin(slug); renderAdmin(); };
@@ -240,16 +240,28 @@ function renderAdmin() {
     message.textContent = '';
     if (files.length > maxUploadBatch) message.textContent = `Mỗi lần chỉ chọn tối đa ${maxUploadBatch} ảnh. Đã giữ ${maxUploadBatch} ảnh đầu tiên.`;
     if (Math.min(files.length, maxUploadBatch) > room) message.textContent = `Thư viện chỉ còn chỗ cho ${room} ảnh (tối đa 30). Đã giữ ${room} ảnh đầu tiên.`;
+    picked.forEach(p => URL.revokeObjectURL(p.url));
     picked = files.slice(0, Math.min(maxUploadBatch, room)).map(file => ({ file, name: nameFromFile(file.name), url: URL.createObjectURL(file) }));
-    uploadList.innerHTML = picked.map((p, i) => `<div class="upload-row"><img src="${p.url}" alt=""><label>Tên Brand/Packaging<input data-upload-name="${i}" maxlength="100" value="${esc(p.name)}"></label><span class="upload-size ${p.file.size > 3_000_000 ? 'too-big' : ''}">${p.file.size >= 1_048_576 ? `${(p.file.size / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(p.file.size / 1024))} KB`}${p.file.size > 3_000_000 ? ' · quá 3 MB' : ''}</span></div>`).join('');
-    uploadList.querySelectorAll('[data-upload-name]').forEach(input => input.oninput = () => { picked[input.dataset.uploadName].name = input.value; });
+    renderPicked();
   };
+  function renderPicked() {
+    uploadList.innerHTML = picked.map((p, i) => `<div class="upload-row"><img src="${p.url}" alt=""><label>Tên Brand/Packaging<input data-upload-name="${i}" maxlength="100" value="${esc(p.name)}"></label><span class="upload-size ${p.file.size > 3_000_000 ? 'too-big' : ''}">${p.file.size >= 1_048_576 ? `${(p.file.size / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(p.file.size / 1024))} KB`}${p.file.size > 3_000_000 ? ' · quá 3 MB' : ''}</span><button type="button" class="upload-remove" data-unpick="${i}" aria-label="Bỏ ảnh ${esc(p.name)}" title="Bỏ ảnh này">×</button></div>`).join('');
+    uploadList.querySelectorAll('[data-upload-name]').forEach(input => input.oninput = () => { picked[input.dataset.uploadName].name = input.value; });
+    uploadList.querySelectorAll('[data-unpick]').forEach(b => b.onclick = () => {
+      const [removed] = picked.splice(Number(b.dataset.unpick), 1); URL.revokeObjectURL(removed.url);
+      // Keep the file input in step with the list so it shows "2 tệp" instead of "3 tệp".
+      const files = new DataTransfer(); picked.forEach(p => files.items.add(p.file)); fileInput.files = files.files;
+      message.textContent = ''; renderPicked();
+    });
+    app.querySelector('#upload').disabled = !picked.length || products.length >= 30;
+  }
   app.querySelector('#upload').onclick = async () => {
     if (products.length >= 30) { message.textContent = 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.'; return; }
     if (!picked.length) { message.textContent = 'Vui lòng chọn ảnh.'; return; }
     if (picked.some(p => !p.name.trim())) { message.textContent = 'Vui lòng nhập tên cho mỗi ảnh.'; return; }
     if (picked.some(p => p.file.size > 3_000_000)) { message.textContent = 'Mỗi ảnh tối đa 3 MB. Hãy bỏ chọn ảnh quá lớn.'; return; }
-    const button = app.querySelector('#upload'); button.disabled = true; fileInput.disabled = true;
+    const button = app.querySelector('#upload'), unpick = [...uploadList.querySelectorAll('[data-unpick]')];
+    button.disabled = true; fileInput.disabled = true; unpick.forEach(b => b.disabled = true);
     let done = 0;
     try {
       // One after another: each upload updates the survey library, so they must not race.
@@ -264,7 +276,7 @@ function renderAdmin() {
     } catch (e) {
       if (done) { sessionStorage.removeItem(draftKey(current.slug)); await refresh().catch(() => {}); }
       app.querySelector('#adminMessage').textContent = `${done ? `Đã tải ${done}/${picked.length} ảnh. ` : ''}Ảnh "${picked[done].name}" lỗi: ${e.message}`;
-      button.disabled = false; fileInput.disabled = false;
+      button.disabled = false; fileInput.disabled = false; unpick.forEach(b => b.disabled = false);
     }
   };
   app.querySelectorAll('[data-delete]').forEach(b => b.onclick = async () => { if (!confirm('Xóa bao bì này khỏi khảo sát hiện tại?')) return; b.disabled = true; try { await adminFetch(`/api/admin/products/${b.dataset.delete}?s=${current.slug}`, { method: 'DELETE' }); sessionStorage.removeItem(draftKey(current.slug)); await refresh(); } catch (e) { message.textContent = e.message || 'Không thể xóa ảnh. Vui lòng thử lại.'; b.disabled = false; } });
