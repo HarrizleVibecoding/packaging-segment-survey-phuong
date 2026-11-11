@@ -2,9 +2,9 @@ const app = document.querySelector('#app');
 const dialog = document.querySelector('#zoomDialog');
 const assignDialog = document.querySelector('#assignDialog');
 const groups = [
-  { id: 'budget', name: 'Economy', color: '#7b8f9b', short: 'Economy' },
-  { id: 'mainstream', name: 'Mainstream', color: '#3187b5', short: 'Main' },
-  { id: 'premium', name: 'Upper Mainstream', color: '#c69330', short: 'Upper M.' }
+  { id: 'budget', name: 'Economy', color: '#e07b24', short: 'Economy' },
+  { id: 'mainstream', name: 'Mainstream', color: '#2e9a5e', short: 'Main' },
+  { id: 'premium', name: 'Upper Mainstream', color: '#2f6fbf', short: 'Upper M.' }
 ];
 let survey = { version: 0, products: [] };
 let selected = { budget: [], mainstream: [], premium: [] };
