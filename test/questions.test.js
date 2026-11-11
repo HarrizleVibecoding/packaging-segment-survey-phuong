@@ -51,6 +51,6 @@ test('lý do hiển thị từng nhóm, giữ câu trả lời và số bao bì'
   control('#respondentName').oninput({ target: { value: 'Nguyễn Văn A' } });
   await control('#submit').onclick();
   assert.deepEqual(submitted.respondent, { name: 'Nguyễn Văn A', phone: '' });
-  assert.match(app.innerHTML, /Cảm ơn Nguyễn Văn A/);
+  assert.match(app.innerHTML, /<h1>Thank you<span class="thank-name">Nguyễn Văn A<\/span><\/h1>/);
 });
 
