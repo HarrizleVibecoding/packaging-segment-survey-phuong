@@ -80,6 +80,18 @@ test('nhiều khảo sát: link riêng, thư viện riêng, tab Sheet riêng, đ
     assert.equal(removed.status, 200);
     assert.equal(removed.data.products.length, 8);
     assert.equal((await api(`/api/admin/products/${ids[1]}`, 'DELETE', undefined, token)).status, 404, 'Xóa phải đúng khảo sát.');
+
+    assert.equal((await api('/api/admin/surveys/khan-giay-uot', 'DELETE', { confirm: 'sai-ma' }, token)).status, 403, 'Xóa khảo sát phải nhập lại đúng mã.');
+    assert.equal((await api('/api/admin/surveys/khan-giay-uot', 'DELETE', { confirm: token })).status, 401, 'Xóa khảo sát cần đăng nhập.');
+    assert.equal((await api('/api/admin/surveys/khan-giay-goi', 'DELETE', { confirm: token }, token)).status, 409, 'Không xóa được khảo sát gốc.');
+    const deleted = await api('/api/admin/surveys/khan-giay-uot', 'DELETE', { confirm: token }, token);
+    assert.equal(deleted.status, 200);
+    assert.deepEqual(deleted.data.surveys.map(s => s.slug), ['khan-giay-goi']);
+    assert.equal((await api('/api/survey?s=khan-giay-uot')).status, 404);
+    assert.equal((await api('/api/survey')).data.products.length, 1, 'Xóa khảo sát này không ảnh hưởng khảo sát gốc.');
+    const recreated = await api('/api/admin/surveys', 'POST', { name: 'Khăn giấy ướt' }, token);
+    assert.equal(recreated.status, 201);
+    assert.equal((await api('/api/survey?s=khan-giay-uot')).data.products.length, 0, 'Tạo lại cùng tên bắt đầu với thư viện trống.');
   } finally { await stop(); }
 });
 

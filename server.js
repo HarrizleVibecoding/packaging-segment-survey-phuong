@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { BlobPreconditionFailedError } from '@vercel/blob';
-import { initStorage, loadRegistry, saveRegistry, loadSurvey, saveSurvey, saveImage, removeImage, dataDir, blobMode, defaultSlug, isPreview } from './storage.js';
+import { initStorage, loadRegistry, saveRegistry, loadSurvey, saveSurvey, removeSurveyConfig, saveImage, removeImage, dataDir, blobMode, defaultSlug, isPreview } from './storage.js';
 
 const root = resolve(import.meta.dirname);
 const staticFiles = {
@@ -34,12 +34,12 @@ async function body(req, max = 8_000_000) {
   for await (const part of req) { text += part; if (text.length > max) throw new Error('Dữ liệu quá lớn.'); }
   return JSON.parse(text);
 }
-function auth(req) {
-  if (!adminToken) return false;
-  const given = req.headers.authorization?.replace(/^Bearer /, '') || '';
+function tokenMatches(given) {
+  if (!adminToken || typeof given !== 'string') return false;
   const a = Buffer.from(given), b = Buffer.from(adminToken);
   return a.length === b.length && timingSafeEqual(a, b);
 }
+const auth = req => tokenMatches(req.headers.authorization?.replace(/^Bearer /, '') || '');
 function cleanSheet(value) { const s = String(value || '').trim(); return /^[=+\-@]/.test(s) ? `'${s}` : s; }
 function httpError(status, message) { const error = new Error(message); error.status = status; return error; }
 // Load → change → save with an etag check, retrying when another request saved in between.
@@ -152,6 +152,21 @@ export async function handler(req, res) {
         return meta;
       });
       return json(res, 201, { survey: created, surveys: await adminSurveyList() });
+    }
+    // Deleting needs the admin code typed again (not just the stored session), and the original
+    // survey behind the root link cannot be deleted. Responses already in Google Sheets are kept.
+    if (req.method === 'DELETE' && path.startsWith('/api/admin/surveys/')) {
+      const slug = requestedSlug(path.split('/').at(-1)), input = await body(req, 10_000);
+      if (!tokenMatches(input?.confirm)) throw httpError(403, 'Mã quản trị nhập lại không đúng.');
+      if (slug === defaultSlug) throw httpError(409, 'Không thể xóa khảo sát gốc (link chính). Bạn có thể đóng khảo sát này.');
+      await updateRegistry(data => {
+        if (!data.surveys.some(s => s.slug === slug)) throw httpError(404, 'Không tìm thấy khảo sát.');
+        data.surveys = data.surveys.filter(s => s.slug !== slug);
+      });
+      const { data: survey } = await loadSurvey(slug);
+      await Promise.all(survey.products.map(p => removeImage(p.image).catch(error => console.error('Ảnh không thể xóa khỏi kho:', error))));
+      await removeSurveyConfig(slug).catch(error => console.error('Không thể xóa cấu hình khảo sát:', error));
+      return json(res, 200, { surveys: await adminSurveyList() });
     }
     if (req.method === 'PATCH' && path.startsWith('/api/admin/surveys/')) {
       const slug = requestedSlug(path.split('/').at(-1)), input = await body(req, 10_000);

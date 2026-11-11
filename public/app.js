@@ -186,7 +186,8 @@ function renderAdmin() {
   const reason = !sheetConfigured ? 'Google Sheet chưa được kết nối' : !current.open ? 'khảo sát đang đóng' : products.length < 9 ? `cần thêm ${9 - products.length} ảnh (tối thiểu 9)` : '';
   app.innerHTML = `<section class="hero"><div><p class="eyebrow">QUẢN TRỊ KHẢO SÁT</p><h1>Thư viện bao bì</h1><p class="sub">Mỗi khảo sát có link, thư viện ảnh và tab Google Sheet riêng. Thay đổi ảnh sẽ tạo phiên bản khảo sát mới.</p></div><button id="lockAdmin" class="button secondary">Khóa quản trị</button></section>`
     + (isPreviewEnv ? '<p class="notice preview-notice">Đây là bản thử nghiệm (preview). Ảnh và khảo sát ở đây tách riêng khỏi bản thật; phản hồi ghi vào các tab Sheet bắt đầu bằng "TEST -".</p>' : '')
-    + `<section class="panel survey-panel"><div class="survey-row"><label class="field survey-select">Khảo sát đang quản lý<select id="surveySelect">${adminSurveys.map(s => `<option value="${s.slug}" ${s.slug === current.slug ? 'selected' : ''}>${esc(s.name)} · ${s.productCount} ảnh${s.open ? '' : ' · đã đóng'}</option>`).join('')}</select></label><div class="survey-actions"><button id="copyLink" class="button secondary" type="button">Sao chép link</button><a class="button secondary" href="/s/${current.slug}${reason ? '?preview=1' : ''}" target="_blank" rel="noopener" style="text-decoration:none">${reason ? 'Xem thử khảo sát ↗' : 'Mở trang khảo sát ↗'}</a><button id="toggleOpen" class="button ${current.open ? 'danger' : ''}" type="button">${current.open ? 'Đóng khảo sát' : 'Mở lại khảo sát'}</button></div></div>`
+    + `<section class="panel survey-panel"><div class="survey-row"><label class="field survey-select">Khảo sát đang quản lý<select id="surveySelect">${adminSurveys.map(s => `<option value="${s.slug}" ${s.slug === current.slug ? 'selected' : ''}>${esc(s.name)} · ${s.productCount} ảnh${s.open ? '' : ' · đã đóng'}</option>`).join('')}</select></label><div class="survey-actions"><button id="copyLink" class="button secondary" type="button">Sao chép link</button><a class="button secondary" href="/s/${current.slug}${reason ? '?preview=1' : ''}" target="_blank" rel="noopener" style="text-decoration:none">${reason ? 'Xem thử khảo sát ↗' : 'Mở trang khảo sát ↗'}</a><button id="toggleOpen" class="button ${current.open ? 'danger' : ''}" type="button">${current.open ? 'Đóng khảo sát' : 'Mở lại khảo sát'}</button>${current.slug === defaultSlug ? '' : '<button id="deleteSurvey" class="button danger" type="button">Xóa khảo sát</button>'}</div></div>`
+    + (current.slug === defaultSlug ? '' : `<div id="deletePanel" class="delete-panel" hidden><p><strong>Xóa vĩnh viễn khảo sát "${esc(current.name)}"?</strong> Link khảo sát và ${products.length} ảnh sẽ bị xóa, không khôi phục được. Dữ liệu đã ghi trên Google Sheet vẫn được giữ.</p><label class="field">Nhập lại mã quản trị để xác nhận<span class="password-field"><input id="deleteCode" type="password" autocomplete="off" placeholder="Mã quản trị"><button type="button" id="toggleDeleteCode" class="password-toggle" aria-label="Hiện mã quản trị" aria-pressed="false" title="Hiện mã quản trị">${eyeIcon(false)}</button></span></label><div class="delete-actions"><button id="cancelDelete" class="button secondary" type="button">Hủy</button><button id="confirmDelete" class="button danger" type="button">Xóa vĩnh viễn</button></div><p id="deleteMessage" class="sub" role="alert"></p></div>`)
     + `<p class="survey-status ${reason ? 'off' : 'on'}"><span class="status-dot" aria-hidden="true"></span>${reason ? `Chưa nhận phản hồi: ${esc(reason)}` : 'Đang nhận phản hồi'}</p>`
     + `<dl class="survey-meta"><div><dt>Link khảo sát</dt><dd><code>${esc(link)}</code></dd></div><div><dt>Ghi vào tab Sheet</dt><dd>${esc(current.sheetTab)}</dd></div></dl>`
     + `<details class="new-survey"><summary>+ Tạo khảo sát mới</summary><div class="new-survey-row"><input id="newSurveyName" maxlength="60" placeholder="Ví dụ: Khăn giấy ướt" aria-label="Tên khảo sát mới"><button id="createSurvey" class="button" type="button">Tạo khảo sát</button></div><p class="sub">Khảo sát mới dùng chung 3 nhóm và 3 câu hỏi. Link được tạo từ tên, phản hồi ghi vào tab Sheet cùng tên.</p></details><p id="surveyMessage" class="sub" role="status"></p></section>`
@@ -202,6 +203,26 @@ function renderAdmin() {
     e.target.disabled = true;
     try { await adminFetch(`/api/admin/surveys/${current.slug}`, { method: 'PATCH', body: JSON.stringify({ open: !current.open }) }); await refresh(); } catch (err) { surveyMessage.textContent = err.message; e.target.disabled = false; }
   };
+  const deletePanel = app.querySelector('#deletePanel');
+  if (deletePanel) {
+    const codeInput = app.querySelector('#deleteCode'), deleteMessage = app.querySelector('#deleteMessage'), toggleCode = app.querySelector('#toggleDeleteCode');
+    app.querySelector('#deleteSurvey').onclick = () => { deletePanel.hidden = false; codeInput.focus(); };
+    app.querySelector('#cancelDelete').onclick = () => { deletePanel.hidden = true; codeInput.value = ''; deleteMessage.textContent = ''; };
+    toggleCode.onclick = () => { const show = codeInput.type === 'password'; codeInput.type = show ? 'text' : 'password'; const label = show ? 'Ẩn mã quản trị' : 'Hiện mã quản trị'; toggleCode.setAttribute('aria-pressed', String(show)); toggleCode.setAttribute('aria-label', label); toggleCode.title = label; toggleCode.innerHTML = eyeIcon(show); codeInput.focus(); };
+    const confirmDelete = async () => {
+      const code = codeInput.value.trim();
+      if (!code) { deleteMessage.textContent = 'Vui lòng nhập lại mã quản trị.'; codeInput.focus(); return; }
+      const button = app.querySelector('#confirmDelete'); button.disabled = true; deleteMessage.textContent = 'Đang xóa khảo sát…';
+      try {
+        await adminFetch(`/api/admin/surveys/${current.slug}`, { method: 'DELETE', body: JSON.stringify({ confirm: code }) });
+        sessionStorage.removeItem(draftKey(current.slug));
+        await refresh(defaultSlug);
+        app.querySelector('#surveyMessage').textContent = `Đã xóa khảo sát "${current.name}".`;
+      } catch (err) { deleteMessage.textContent = err.message; button.disabled = false; codeInput.select(); }
+    };
+    app.querySelector('#confirmDelete').onclick = confirmDelete;
+    codeInput.onkeydown = e => { if (e.key === 'Enter') confirmDelete(); };
+  }
   const nameInput = app.querySelector('#newSurveyName');
   const create = async () => {
     const name = nameInput.value.trim();
