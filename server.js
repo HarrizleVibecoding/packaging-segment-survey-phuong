@@ -109,8 +109,11 @@ async function sendToSheet(record) {
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 12000);
   try {
     const response = await fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...record, ...(record.sheetTab ? { auth: webhookSecret } : { secret: webhookSecret }) }), signal: controller.signal });
-    const result = await response.json();
-    if (!response.ok || result.ok !== true) throw new Error('Google Sheets từ chối phản hồi.');
+    const result = await response.json().catch(() => ({ error: `non-JSON response (HTTP ${response.status})` }));
+    if (!response.ok || result.ok !== true) {
+      console.error('Google Sheets rejected response', { status: response.status, tab: record.sheetTab || '(gid 0)', error: result.error });
+      throw new Error(result.error === 'unauthorized' && record.sheetTab ? 'Google Sheets từ chối phản hồi (Apps Script có thể chưa được cập nhật bản mới).' : 'Google Sheets từ chối phản hồi.');
+    }
   } finally { clearTimeout(timeout); }
 }
 async function adminSurveyList() {
