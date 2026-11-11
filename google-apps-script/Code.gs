@@ -1,12 +1,14 @@
 // Dán vào Apps Script gắn với Google Sheet PHẢN HỒI SURVEY.
 // Trong Project Settings > Script Properties, tạo khóa SURVEY_SECRET.
+// Khảo sát gốc (khăn giấy gói) ghi vào tab đầu tiên (gid 0). Mỗi khảo sát khác ghi vào
+// tab mang tên khảo sát (sheetTab); tab được tự tạo khi có phản hồi đầu tiên.
 const SPREADSHEET_ID = '1nTNtNffh-yh5y36Fq-sWLxf1Fw9_Or2Ggx375bfOpfM';
 const SHEET_ID = 0;
 const HEADERS = [
   'submission_id', 'submitted_at', 'survey_version',
   'economy_ids', 'economy_names', 'mainstream_ids', 'mainstream_names',
   'upper_mainstream_ids', 'upper_mainstream_names', 'why_economy', 'why_mainstream',
-  'why_upper_mainstream', 'upper_mainstream_signals', 'full_name', 'phone'
+  'why_upper_mainstream', 'upper_mainstream_signals', 'full_name', 'phone', 'survey'
 ];
 
 function doPost(e) {
@@ -15,12 +17,19 @@ function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
     const secret = PropertiesService.getScriptProperties().getProperty('SURVEY_SECRET');
-    if (!secret || data.secret !== secret) return out({ ok: false, error: 'unauthorized' });
+    // Requests for named tabs send the secret as "auth", so an outdated script rejects them
+    // instead of writing them into the first tab.
+    const given = data.auth || data.secret;
+    if (!secret || given !== secret) return out({ ok: false, error: 'unauthorized' });
     if (!/^[a-f0-9-]{36}$/i.test(data.submissionId || '')) return out({ ok: false, error: 'invalid_id' });
-    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetById(SHEET_ID);
+    const book = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const tab = String(data.sheetTab || '').trim();
+    let sheet = tab ? book.getSheetByName(tab) : book.getSheetById(SHEET_ID);
+    if (!sheet && tab) sheet = book.insertSheet(tab);
     if (!sheet) return out({ ok: false, error: 'sheet_not_found' });
     if (sheet.getLastRow() === 0) sheet.appendRow(HEADERS);
     if (sheet.getRange(1, 14).getValue() !== 'full_name') sheet.getRange(1, 14, 1, 2).setValues([['full_name', 'phone']]);
+    if (sheet.getRange(1, 16).getValue() !== 'survey') sheet.getRange(1, 16).setValue('survey');
     const ids = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().flat() : [];
     if (ids.includes(data.submissionId)) return out({ ok: true, duplicate: true });
     const safe = value => { const s = String(value || '').trim(); return /^[=+\-@]/.test(s) ? "'" + s : s; };
@@ -32,7 +41,8 @@ function doPost(e) {
       join(data.selections.premium), join(data.selectionNames.premium),
       safe(data.answers.budget), safe(data.answers.mainstream),
       safe(data.answers.premium), safe(data.answers.premiumSignals),
-      safe(data.respondent.name), safe(data.respondent.phone)
+      safe(data.respondent.name), safe(data.respondent.phone),
+      safe(data.surveyName || data.survey)
     ]);
     return out({ ok: true });
   } catch (error) { return out({ ok: false, error: String(error) }); }

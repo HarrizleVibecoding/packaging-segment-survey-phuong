@@ -16,14 +16,21 @@ let questionIndex = 0;
 let error = '';
 let adminUnlocked = false;
 let sheetConfigured = false;
+const defaultSlug = 'khan-giay-goi';
+const pathSlug = (globalThis.location?.pathname || '').match(/^\/s\/([a-z0-9-]+)\/?$/)?.[1] || '';
+const surveyUrl = slug => `/api/survey${slug ? `?s=${encodeURIComponent(slug)}` : ''}`;
+// The original survey keeps the old draft key so drafts already in progress survive this update.
+const draftKey = (slug = survey.slug) => !slug || slug === defaultSlug ? 'surveyDraft' : `surveyDraft:${slug}`;
+const productType = () => survey.name ? `${survey.name.charAt(0).toLowerCase()}${survey.name.slice(1)} ` : '';
+let isPreviewEnv = false, adminLoaded = false, adminSurveys = [], adminSurvey = { products: [] }, adminSlug = '';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const find = id => survey.products.find(p => p.id === id);
 const productNumber = id => String(survey.products.findIndex(p => p.id === id) + 1).padStart(2, '0');
 const total = () => groups.reduce((n, g) => n + selected[g.id].length, 0);
-function persist() { sessionStorage.setItem('surveyDraft', JSON.stringify({ version: survey.version, selected, answers, respondent, submissionId, step, questionIndex })); }
+function persist() { sessionStorage.setItem(draftKey(), JSON.stringify({ version: survey.version, selected, answers, respondent, submissionId, step, questionIndex })); }
 function restore() {
   try {
-    const d = JSON.parse(sessionStorage.getItem('surveyDraft'));
+    const d = JSON.parse(sessionStorage.getItem(draftKey()));
     if (!d?.selected || !d.answers) return;
     const validIds = new Set(survey.products.map(p => p.id));
     const used = new Set();
@@ -40,13 +47,13 @@ function restore() {
     submissionId = /^[a-f0-9-]{36}$/i.test(d.submissionId || '') ? d.submissionId : crypto.randomUUID();
     step = ['questions', 'details'].includes(d.step) && groups.every(g => selected[g.id].length === 3) ? d.step : 'sort';
     questionIndex = Number.isInteger(d.questionIndex) && d.questionIndex >= 0 && d.questionIndex < groups.length ? d.questionIndex : 0;
-  } catch { sessionStorage.removeItem('surveyDraft'); }
+  } catch { sessionStorage.removeItem(draftKey()); }
 }
 function hero(title, subtitle, eyebrow, number) { return `<section class="hero"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="sub">${subtitle}</p></div><span class="step">BƯỚC ${number} / 3</span></section>`; }
 function renderSort() {
   const remaining = survey.products.filter(p => !groups.some(g => selected[g.id].includes(p.id)));
   const ready = groups.every(g => selected[g.id].length === 3);
-  app.innerHTML = hero('Bạn cảm nhận bao bì thuộc phân khúc nào?', 'Chọn 3 bao bì cho mỗi nhóm. Kéo thả trên máy tính hoặc chạm vào ảnh rồi chọn nhóm trên điện thoại.', '01 / PHÂN LOẠI BAO BÌ', 1)
+  app.innerHTML = hero(`Bạn cảm nhận bao bì ${esc(productType())}thuộc phân khúc nào?`, 'Chọn 3 bao bì cho mỗi nhóm. Kéo thả trên máy tính hoặc chạm vào ảnh rồi chọn nhóm trên điện thoại.', '01 / PHÂN LOẠI BAO BÌ', 1)
     + `<div class="toolbar"><div class="progress">Bạn đã chọn <span>${total()} / 9</span> bao bì</div><button id="next" class="button" ${ready && sheetConfigured ? '' : 'disabled'}>Tiếp tục →</button></div>`
     + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
     + `<div class="segments">${groups.map(g => `<section class="segment" data-drop="${g.id}" style="--accent:${g.color}"><div class="segment-title"><span class="dot"></span>${g.name}<span class="count">${selected[g.id].length}/3</span></div>${selected[g.id].length ? `<div class="slot-items">${selected[g.id].map(id => { const p = find(id); return p ? `<div class="slot" draggable="true" data-id="${id}" data-group="${g.id}"><button type="button" class="slot-media" data-move="${id}" aria-label="Chuyển nhóm hoặc đổi chỗ ${esc(p.name)}" title="Kéo sang nhóm khác hoặc chạm để chuyển nhóm"><span class="slot-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}" draggable="false"></button><div class="slot-bar"><span class="slot-name" title="${esc(p.name)}">${esc(p.name)}</span><button type="button" class="slot-zoom" data-zoom="${id}" aria-label="Phóng to ${esc(p.name)}">⌕</button><button type="button" class="slot-remove" data-remove="${id}" aria-label="Bỏ ${esc(p.name)}">×</button></div></div>` : ''; }).join('')}</div>` : `<div class="hint">Thả bao bì vào đây</div>`}</section>`).join('')}</div>`
@@ -145,7 +152,7 @@ async function submit() {
   const phone = respondent.phone.trim();
   if (phone && (!/^[+()\d .-]{6,30}$/.test(phone) || (phone.match(/\d/g) || []).length < 7 || (phone.match(/\d/g) || []).length > 15)) { error = 'SĐT chưa đúng định dạng. Bạn có thể sửa hoặc để trống.'; renderDetails(); app.querySelector('#respondentPhone').focus(); return; }
   const button = app.querySelector('#submit'); button.disabled = true; button.textContent = 'Đang gửi…'; error = '';
-  try { const response = await fetch('/api/responses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ submissionId, surveyVersion: survey.version, selections: selected, answers, respondent }) }); const result = await response.json(); if (response.status === 409 && result.code === 'SURVEY_CHANGED') { const latest = await fetch('/api/survey'); if (latest.ok) { survey = await latest.json(); sheetConfigured = survey.acceptingResponses; groups.forEach(g => selected[g.id] = selected[g.id].filter(id => find(id))); step = 'sort'; questionIndex = 0; error = result.error; persist(); render(); return; } } if (!response.ok || !result.ok) throw new Error(result.error || 'Không thể gửi phản hồi.'); step = 'done'; sessionStorage.removeItem('surveyDraft'); render(); window.scrollTo(0, 0); }
+  try { const response = await fetch('/api/responses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ survey: survey.slug, submissionId, surveyVersion: survey.version, selections: selected, answers, respondent }) }); const result = await response.json(); if (response.status === 409 && result.code === 'SURVEY_CHANGED') { const latest = await fetch(surveyUrl(survey.slug)); if (latest.ok) { survey = await latest.json(); sheetConfigured = survey.acceptingResponses; groups.forEach(g => selected[g.id] = selected[g.id].filter(id => find(id))); step = 'sort'; questionIndex = 0; error = result.error; persist(); render(); return; } } if (!response.ok || !result.ok) throw new Error(result.error || 'Không thể gửi phản hồi.'); step = 'done'; sessionStorage.removeItem(draftKey()); render(); window.scrollTo(0, 0); }
   catch (e) { error = `${e.message} Câu trả lời của bạn vẫn được giữ lại. Hãy thử gửi lại.`; renderDetails(); }
 }
 function eyeIcon(visible) { return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>${visible ? '' : '<path d="M3 3l18 18"/>'}</svg>`; }
@@ -154,21 +161,80 @@ function renderAdmin() {
   if (!adminUnlocked) {
     app.innerHTML = `<section class="hero"><div><p class="eyebrow">QUẢN TRỊ KHẢO SÁT</p><h1>Nhập mã quản trị</h1><p class="sub">Chỉ người có mã đúng mới có thể thêm hoặc xóa hình ảnh bao bì.</p></div></section><section class="panel" style="max-width:420px;margin:20px 0 45px"><label class="field">Mã quản trị<span class="password-field"><input id="adminCode" type="password" value="${esc(token)}" autocomplete="off" placeholder="Nhập mã quản trị"><button type="button" id="toggleAdminCode" class="password-toggle" aria-label="Hiện mã quản trị" aria-pressed="false" title="Hiện mã quản trị">${eyeIcon(false)}</button></span></label><div class="actions"><button id="unlockAdmin" class="button">Mở quản trị →</button><a href="/" class="button secondary" style="text-decoration:none">← Quay lại</a></div><p id="adminMessage" class="sub" style="margin-top:15px"></p></section>`;
     const input = app.querySelector('#adminCode'), message = app.querySelector('#adminMessage');
-    const unlock = async () => { const code = input.value.trim(); const button = app.querySelector('#unlockAdmin'); button.disabled = true; message.textContent = ''; try { const r = await fetch('/api/admin/status', { headers: { Authorization: `Bearer ${code}` } }); if (!r.ok) { message.textContent = 'Mã quản trị không đúng.'; return; } const status = await r.json(); sheetConfigured = status.sheetConfigured; sessionStorage.setItem('adminToken', code); adminUnlocked = true; renderAdmin(); } catch { message.textContent = 'Không thể kết nối máy chủ. Vui lòng thử lại.'; } finally { button.disabled = false; } };
+    const unlock = async () => { const code = input.value.trim(); const button = app.querySelector('#unlockAdmin'); button.disabled = true; message.textContent = ''; try { const r = await fetch('/api/admin/status', { headers: { Authorization: `Bearer ${code}` } }); if (!r.ok) { message.textContent = 'Mã quản trị không đúng.'; return; } const status = await r.json(); sheetConfigured = status.sheetConfigured; isPreviewEnv = Boolean(status.preview); sessionStorage.setItem('adminToken', code); adminUnlocked = true; renderAdmin(); } catch { message.textContent = 'Không thể kết nối máy chủ. Vui lòng thử lại.'; } finally { button.disabled = false; } };
     app.querySelector('#unlockAdmin').onclick = unlock;
     input.onkeydown = e => { if (e.key === 'Enter') unlock(); };
     const toggle = app.querySelector('#toggleAdminCode');
     toggle.onclick = () => { const show = input.type === 'password'; input.type = show ? 'text' : 'password'; const label = show ? 'Ẩn mã quản trị' : 'Hiện mã quản trị'; toggle.setAttribute('aria-pressed', String(show)); toggle.setAttribute('aria-label', label); toggle.title = label; toggle.innerHTML = eyeIcon(show); input.focus(); };
     return;
   }
-  app.innerHTML = `<section class="hero"><div><p class="eyebrow">QUẢN TRỊ KHẢO SÁT</p><h1>Thư viện bao bì</h1><p class="sub">Tải ảnh của bạn lên. Mỗi lần thay đổi danh sách sẽ tạo phiên bản khảo sát mới.</p></div><button id="lockAdmin" class="button secondary">Khóa quản trị</button></section>${sheetConfigured ? '' : '<p class="notice">Khảo sát tạm chưa nhận phản hồi vì Google Sheet chưa được kết nối. Vui lòng quay lại sau.</p>'}${survey.products.length < 9 ? `<p class="notice">Hiện có ${survey.products.length} ảnh. Người quản trị cần tải lên ít nhất 9 ảnh để bắt đầu khảo sát.</p>` : ''}<div class="admin-grid"><section class="panel"><h2>Thêm bao bì</h2><label class="field">Tên Brand/Packaging<input id="name" maxlength="100" placeholder="Ví dụ: Khăn giấy gói A"></label><label class="field">Hình ảnh (PNG, JPG, WebP; tối đa 3 MB)<input id="image" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="upload" class="button" ${survey.products.length >= 30 ? "disabled" : ""}>Tải ảnh lên</button><p id="adminMessage" class="sub" style="margin-top:16px"></p></section><section class="panel"><h2>Danh sách ảnh · ${survey.products.length}/30</h2><div class="admin-list">${survey.products.map(p => `<div class="admin-item"><span class="admin-number">${productNumber(p.id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><strong title="${esc(p.name)}">${esc(p.name)}</strong><button data-delete="${p.id}" aria-label="Xóa ${esc(p.name)} khỏi khảo sát">Xóa</button></div>`).join('')}</div>${survey.products.length ? '' : '<p class="sub">Chưa có ảnh nào. Hãy thêm ít nhất 9 ảnh.</p>'}</section></div><div class="actions"><a href="/" class="button secondary" style="text-decoration:none">← Xem khảo sát</a></div>`;
-  const message = app.querySelector('#adminMessage');
-  if (survey.products.length >= 30) message.textContent = 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.';
-  app.querySelector('#lockAdmin').onclick = () => { adminUnlocked = false; sessionStorage.removeItem('adminToken'); renderAdmin(); };
-  app.querySelector('#upload').onclick = async () => { if (survey.products.length >= 30) { message.textContent = 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.'; return; } const name = app.querySelector('#name').value.trim(), image = app.querySelector('#image').files[0]; if (!name || !image) { message.textContent = 'Vui lòng nhập tên và chọn ảnh.'; return; } if (image.size > 3_000_000) { message.textContent = 'Ảnh tối đa 3 MB.'; return; } const button = app.querySelector('#upload'); button.disabled = true; message.textContent = 'Đang tải ảnh…'; try { const data = await new Promise((ok, fail) => { const reader = new FileReader(); reader.onload = () => ok(reader.result); reader.onerror = fail; reader.readAsDataURL(image); }); const r = await fetch('/api/admin/products', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem('adminToken') || ''}` }, body: JSON.stringify({ name, image: data }) }); const result = await r.json(); if (!r.ok) throw new Error(result.error); survey = result; sessionStorage.removeItem('surveyDraft'); renderAdmin(); } catch (e) { message.textContent = e.message; button.disabled = false; } };
-  app.querySelectorAll('[data-delete]').forEach(b => b.onclick = async () => { if (!confirm('Xóa bao bì này khỏi khảo sát hiện tại?')) return; b.disabled = true; try { const r = await fetch(`/api/admin/products/${b.dataset.delete}`, { method: 'DELETE', headers: { Authorization: `Bearer ${sessionStorage.getItem('adminToken') || ''}` } }); const result = await r.json(); if (!r.ok) throw new Error(result.error); survey = result; sessionStorage.removeItem('surveyDraft'); renderAdmin(); } catch (e) { message.textContent = e.message || 'Không thể xóa ảnh. Vui lòng thử lại.'; b.disabled = false; } });
+  if (!adminLoaded) {
+    app.innerHTML = '<p class="sub" style="margin:40px 0">Đang tải danh sách khảo sát…</p>';
+    loadAdmin(adminSlug || sessionStorage.getItem('adminSurvey') || pathSlug).then(() => { adminLoaded = true; renderAdmin(); }).catch(e => { app.innerHTML = `<p class="notice" style="margin-top:35px">${esc(e.message)}</p>`; });
+    return;
+  }
+  const current = adminSurveys.find(s => s.slug === adminSlug) || adminSurveys[0];
+  const products = adminSurvey.products;
+  const link = `${location.origin}/s/${current.slug}`;
+  const reason = !sheetConfigured ? 'Google Sheet chưa được kết nối' : !current.open ? 'khảo sát đang đóng' : products.length < 9 ? `cần thêm ${9 - products.length} ảnh (tối thiểu 9)` : '';
+  app.innerHTML = `<section class="hero"><div><p class="eyebrow">QUẢN TRỊ KHẢO SÁT</p><h1>Thư viện bao bì</h1><p class="sub">Mỗi khảo sát có link, thư viện ảnh và tab Google Sheet riêng. Thay đổi ảnh sẽ tạo phiên bản khảo sát mới.</p></div><button id="lockAdmin" class="button secondary">Khóa quản trị</button></section>`
+    + (isPreviewEnv ? '<p class="notice preview-notice">Đây là bản thử nghiệm (preview). Ảnh và khảo sát ở đây tách riêng khỏi bản thật; phản hồi ghi vào các tab Sheet bắt đầu bằng "TEST -".</p>' : '')
+    + `<section class="panel survey-panel"><div class="survey-row"><label class="field survey-select">Khảo sát đang quản lý<select id="surveySelect">${adminSurveys.map(s => `<option value="${s.slug}" ${s.slug === current.slug ? 'selected' : ''}>${esc(s.name)} · ${s.productCount} ảnh${s.open ? '' : ' · đã đóng'}</option>`).join('')}</select></label><div class="survey-actions"><button id="copyLink" class="button secondary" type="button">Sao chép link</button><a class="button secondary" href="/s/${current.slug}" target="_blank" rel="noopener" style="text-decoration:none">Mở trang khảo sát ↗</a><button id="toggleOpen" class="button ${current.open ? 'danger' : ''}" type="button">${current.open ? 'Đóng khảo sát' : 'Mở lại khảo sát'}</button></div></div>`
+    + `<p class="survey-status ${reason ? 'off' : 'on'}"><span class="status-dot" aria-hidden="true"></span>${reason ? `Chưa nhận phản hồi: ${esc(reason)}` : 'Đang nhận phản hồi'}</p>`
+    + `<dl class="survey-meta"><div><dt>Link khảo sát</dt><dd><code>${esc(link)}</code></dd></div><div><dt>Ghi vào tab Sheet</dt><dd>${esc(current.sheetTab)}</dd></div></dl>`
+    + `<details class="new-survey"><summary>+ Tạo khảo sát mới</summary><div class="new-survey-row"><input id="newSurveyName" maxlength="60" placeholder="Ví dụ: Khăn giấy ướt" aria-label="Tên khảo sát mới"><button id="createSurvey" class="button" type="button">Tạo khảo sát</button></div><p class="sub">Khảo sát mới dùng chung 3 nhóm và 3 câu hỏi. Link được tạo từ tên, phản hồi ghi vào tab Sheet cùng tên.</p></details><p id="surveyMessage" class="sub" role="status"></p></section>`
+    + `<div class="admin-grid"><section class="panel"><h2>Thêm bao bì · ${esc(current.name)}</h2><label class="field">Tên Brand/Packaging<input id="name" maxlength="100" placeholder="Ví dụ: ${esc(current.name)} A"></label><label class="field">Hình ảnh (PNG, JPG, WebP; tối đa 3 MB)<input id="image" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="upload" class="button" ${products.length >= 30 ? 'disabled' : ''}>Tải ảnh lên</button><p id="adminMessage" class="sub" style="margin-top:16px"></p></section><section class="panel"><h2>Danh sách ảnh · ${products.length}/30</h2><div class="admin-list">${products.map((p, i) => `<div class="admin-item"><span class="admin-number">${String(i + 1).padStart(2, '0')}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><strong title="${esc(p.name)}">${esc(p.name)}</strong><button data-delete="${p.id}" aria-label="Xóa ${esc(p.name)} khỏi khảo sát">Xóa</button></div>`).join('')}</div>${products.length ? '' : '<p class="sub">Chưa có ảnh nào. Hãy thêm ít nhất 9 ảnh.</p>'}</section></div><div class="actions"><a href="/s/${current.slug}" class="button secondary" style="text-decoration:none">← Xem khảo sát</a></div>`;
+  const message = app.querySelector('#adminMessage'), surveyMessage = app.querySelector('#surveyMessage');
+  if (products.length >= 30) message.textContent = 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.';
+  const refresh = async (slug = adminSlug) => { await loadAdmin(slug); renderAdmin(); };
+  app.querySelector('#lockAdmin').onclick = () => { adminUnlocked = false; adminLoaded = false; sessionStorage.removeItem('adminToken'); renderAdmin(); };
+  app.querySelector('#surveySelect').onchange = e => refresh(e.target.value).catch(err => { surveyMessage.textContent = err.message; });
+  app.querySelector('#copyLink').onclick = async () => { try { await navigator.clipboard.writeText(link); surveyMessage.textContent = 'Đã sao chép link khảo sát.'; } catch { surveyMessage.textContent = `Hãy sao chép link: ${link}`; } };
+  app.querySelector('#toggleOpen').onclick = async e => {
+    if (current.open && !confirm(`Đóng khảo sát "${current.name}"? Người tham gia sẽ không gửi được phản hồi cho tới khi bạn mở lại.`)) return;
+    e.target.disabled = true;
+    try { await adminFetch(`/api/admin/surveys/${current.slug}`, { method: 'PATCH', body: JSON.stringify({ open: !current.open }) }); await refresh(); } catch (err) { surveyMessage.textContent = err.message; e.target.disabled = false; }
+  };
+  const nameInput = app.querySelector('#newSurveyName');
+  const create = async () => {
+    const name = nameInput.value.trim();
+    if (name.length < 2) { surveyMessage.textContent = 'Vui lòng nhập tên khảo sát (ít nhất 2 ký tự).'; nameInput.focus(); return; }
+    const button = app.querySelector('#createSurvey'); button.disabled = true; surveyMessage.textContent = 'Đang tạo khảo sát…';
+    try { const result = await adminFetch('/api/admin/surveys', { method: 'POST', body: JSON.stringify({ name }) }); await refresh(result.survey.slug); } catch (err) { surveyMessage.textContent = err.message; button.disabled = false; }
+  };
+  app.querySelector('#createSurvey').onclick = create;
+  nameInput.onkeydown = e => { if (e.key === 'Enter') create(); };
+  app.querySelector('#upload').onclick = async () => { if (products.length >= 30) { message.textContent = 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.'; return; } const name = app.querySelector('#name').value.trim(), image = app.querySelector('#image').files[0]; if (!name || !image) { message.textContent = 'Vui lòng nhập tên và chọn ảnh.'; return; } if (image.size > 3_000_000) { message.textContent = 'Ảnh tối đa 3 MB.'; return; } const button = app.querySelector('#upload'); button.disabled = true; message.textContent = 'Đang tải ảnh…'; try { const data = await new Promise((ok, fail) => { const reader = new FileReader(); reader.onload = () => ok(reader.result); reader.onerror = fail; reader.readAsDataURL(image); }); await adminFetch(`/api/admin/products?s=${current.slug}`, { method: 'POST', body: JSON.stringify({ name, image: data }) }); sessionStorage.removeItem(draftKey(current.slug)); await refresh(); } catch (e) { message.textContent = e.message; button.disabled = false; } };
+  app.querySelectorAll('[data-delete]').forEach(b => b.onclick = async () => { if (!confirm('Xóa bao bì này khỏi khảo sát hiện tại?')) return; b.disabled = true; try { await adminFetch(`/api/admin/products/${b.dataset.delete}?s=${current.slug}`, { method: 'DELETE' }); sessionStorage.removeItem(draftKey(current.slug)); await refresh(); } catch (e) { message.textContent = e.message || 'Không thể xóa ảnh. Vui lòng thử lại.'; b.disabled = false; } });
 }
-function render() { if (location.hash === '#admin') renderAdmin(); else if (step === 'questions') renderQuestions(); else if (step === 'details') renderDetails(); else if (step === 'done') app.innerHTML = `<section class="thank-you"><div class="thank-mark" aria-hidden="true">✓</div><p class="eyebrow">KHẢO SÁT ĐÃ HOÀN TẤT</p><h1>Cảm ơn ${esc(respondent.name.trim())}!</h1><p class="thank-lead">Chúng tôi thật sự trân trọng thời gian và góc nhìn bạn đã dành cho khảo sát này.</p><div class="thank-divider"></div><p class="thank-note">Câu trả lời của bạn đã được ghi nhận. Những chia sẻ này sẽ giúp chúng tôi hiểu rõ hơn cảm nhận của người tiêu dùng về thiết kế bao bì.</p></section>`; else renderSort(); }
-window.onhashchange = render;
-try { const r = await fetch('/api/survey'); if (!r.ok) throw new Error(); survey = await r.json(); sheetConfigured = Boolean(survey.acceptingResponses); restore(); render(); } catch { app.innerHTML = '<p class="notice" style="margin-top:35px">Không thể tải khảo sát. Vui lòng thử lại sau.</p>'; }
+async function adminFetch(path, options = {}) {
+  const r = await fetch(path, { ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${sessionStorage.getItem('adminToken') || ''}` } });
+  const result = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(result.error || 'Có lỗi xảy ra. Vui lòng thử lại.');
+  return result;
+}
+async function loadAdmin(slug) {
+  adminSurveys = (await adminFetch('/api/admin/surveys')).surveys;
+  adminSlug = adminSurveys.some(s => s.slug === slug) ? slug : adminSurveys[0].slug;
+  sessionStorage.setItem('adminSurvey', adminSlug);
+  const r = await fetch(surveyUrl(adminSlug));
+  if (!r.ok) throw new Error('Không thể tải thư viện ảnh của khảo sát.');
+  adminSurvey = await r.json();
+}
+function renderClosed() {
+  const title = survey.open === false ? 'Khảo sát này đã đóng' : 'Khảo sát chưa mở';
+  const note = survey.open === false ? 'Cảm ơn bạn đã quan tâm. Khảo sát hiện không nhận thêm phản hồi.' : 'Khảo sát đang được chuẩn bị. Vui lòng quay lại sau hoặc liên hệ người gửi link cho bạn.';
+  app.innerHTML = `<section class="thank-you"><div class="thank-mark closed-mark" aria-hidden="true">!</div><p class="eyebrow">${esc(survey.name || 'KHẢO SÁT BAO BÌ')}</p><h1>${title}</h1><p class="thank-lead">${note}</p></section>`;
+}
+function render() { if (location.hash === '#admin') renderAdmin(); else if (step === 'done') app.innerHTML = `<section class="thank-you"><div class="thank-mark" aria-hidden="true">✓</div><p class="eyebrow">KHẢO SÁT ĐÃ HOÀN TẤT</p><h1>Cảm ơn ${esc(respondent.name.trim())}!</h1><p class="thank-lead">Chúng tôi thật sự trân trọng thời gian và góc nhìn bạn đã dành cho khảo sát này.</p><div class="thank-divider"></div><p class="thank-note">Câu trả lời của bạn đã được ghi nhận. Những chia sẻ này sẽ giúp chúng tôi hiểu rõ hơn cảm nhận của người tiêu dùng về thiết kế bao bì.</p></section>`; else if (!sheetConfigured) renderClosed(); else if (step === 'questions') renderQuestions(); else if (step === 'details') renderDetails(); else renderSort(); }
+// Switching between the survey and #admin reloads so each view starts from fresh server data.
+window.onhashchange = () => location.reload();
+try {
+  if (location.hash === '#admin') render();
+  else {
+    const r = await fetch(surveyUrl(pathSlug));
+    if (r.status === 404) app.innerHTML = '<p class="notice" style="margin-top:35px">Không tìm thấy khảo sát. Vui lòng kiểm tra lại link bạn nhận được.</p>';
+    else { if (!r.ok) throw new Error(); survey = await r.json(); sheetConfigured = Boolean(survey.acceptingResponses); restore(); render(); }
+  }
+} catch { app.innerHTML = '<p class="notice" style="margin-top:35px">Không thể tải khảo sát. Vui lòng thử lại sau.</p>'; }
 

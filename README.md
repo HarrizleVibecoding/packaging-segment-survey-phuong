@@ -30,6 +30,18 @@ node server.js
 
 Mỗi phản hồi hợp lệ tạo một hàng trong tab `Trang tính1` (gid 0), chứa ID và tên 3 bao bì mỗi nhóm, 3 câu trả lời, Họ và Tên, SĐT (có thể trống), thời điểm và phiên bản bộ ảnh. Cột `upper_mainstream_signals` cũ được giữ trống để tương thích với dữ liệu trước đây. `submission_id` chống trùng khi gửi lại. Nếu Sheet chưa kết nối, khảo sát tạm dừng nhận phản hồi. Nếu gửi lỗi, giao diện giữ câu trả lời và cho thử lại. Không đưa secret vào mã frontend.
 
+## Nhiều khảo sát
+
+Một bản deploy chạy được nhiều khảo sát (ví dụ khăn giấy gói, khăn giấy ướt). Mỗi khảo sát có link `/s/<mã>`, thư viện ảnh riêng (tối đa 30) và tab Sheet riêng; tất cả dùng chung 3 nhóm, 3 câu hỏi và một mã quản trị.
+
+- Link gốc `/` vẫn là khảo sát **Khăn giấy gói** (`/s/khan-giay-goi`), ghi vào tab đầu tiên như trước. Dữ liệu cũ giữ nguyên chỗ.
+- Trong `/#admin`: chọn khảo sát, **+ Tạo khảo sát mới** (link tạo từ tên, ví dụ "Khăn giấy ướt" → `/s/khan-giay-uot`), **Sao chép link**, **Đóng / Mở lại khảo sát**.
+- Khảo sát chỉ nhận phản hồi khi: Sheet đã kết nối, khảo sát đang mở và có ít nhất 9 ảnh. Nếu không, người tham gia thấy màn hình "Khảo sát chưa mở" hoặc "đã đóng".
+- Khảo sát mới ghi vào tab mang tên khảo sát; Apps Script tự tạo tab khi có phản hồi đầu tiên. Cột `survey` (cột 16) ghi tên khảo sát.
+- **Phải cập nhật `Code.gs` trên Apps Script** (dán bản mới, rồi Deploy → Manage deployments → Edit → New version) trước khi dùng khảo sát thứ hai. Apps Script cũ sẽ từ chối phản hồi của tab mới (server báo lỗi, người tham gia được giữ bản nháp) thay vì ghi nhầm vào tab đầu.
+
+Bản **Preview** trên Vercel (deploy từ branch) tự tách dữ liệu: ảnh và danh sách khảo sát nằm dưới tiền tố `preview/` trong Blob, phản hồi ghi vào tab `TEST - <tên khảo sát>`. Có thể ép tiền tố bằng biến `DATA_PREFIX`.
+
 ## Quy tắc khảo sát
 
 - Đúng 3 bao bì mỗi nhóm: Economy, Mainstream, Upper Mainstream (9 bao bì không trùng nhau), theo ảnh mẫu.
