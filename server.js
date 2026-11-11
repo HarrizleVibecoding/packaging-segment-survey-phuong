@@ -120,7 +120,7 @@ async function adminSurveyList() {
   const { data } = await loadRegistry();
   return Promise.all(data.surveys.map(async meta => {
     const { data: survey } = await loadSurvey(meta.slug);
-    return { slug: meta.slug, name: meta.name, open: meta.open, productCount: survey.products.length, acceptingResponses: accepting(meta, survey), sheetTab: sheetTabFor(meta) || 'Trang đầu tiên (gid 0)' };
+    return { slug: meta.slug, name: meta.name, open: meta.open, productCount: survey.products.length, acceptingResponses: accepting(meta, survey), sheetTab: sheetTabFor(meta) || meta.name };
   }));
 }
 

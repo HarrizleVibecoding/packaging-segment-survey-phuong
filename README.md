@@ -28,7 +28,7 @@ $env:GOOGLE_SHEETS_SECRET = 'chuoi-trung-voi-SURVEY_SECRET'
 node server.js
 ```
 
-Mỗi phản hồi hợp lệ tạo một hàng trong tab `Trang tính1` (gid 0), chứa ID và tên 3 bao bì mỗi nhóm, 3 câu trả lời, Họ và Tên, SĐT (có thể trống), thời điểm và phiên bản bộ ảnh. Cột `upper_mainstream_signals` cũ được giữ trống để tương thích với dữ liệu trước đây. `submission_id` chống trùng khi gửi lại. Nếu Sheet chưa kết nối, khảo sát tạm dừng nhận phản hồi. Nếu gửi lỗi, giao diện giữ câu trả lời và cho thử lại. Không đưa secret vào mã frontend.
+Mỗi phản hồi hợp lệ tạo một hàng trong tab đầu tiên (gid 0, nên đặt tên `Khăn giấy gói`; trang quản trị hiển thị tên khảo sát), chứa ID và tên 3 bao bì mỗi nhóm, 3 câu trả lời, Họ và Tên, SĐT (có thể trống), thời điểm và phiên bản bộ ảnh. Cột `upper_mainstream_signals` cũ được giữ trống để tương thích với dữ liệu trước đây. `submission_id` chống trùng khi gửi lại. Nếu Sheet chưa kết nối, khảo sát tạm dừng nhận phản hồi. Nếu gửi lỗi, giao diện giữ câu trả lời và cho thử lại. Không đưa secret vào mã frontend.
 
 ## Nhiều khảo sát
 
