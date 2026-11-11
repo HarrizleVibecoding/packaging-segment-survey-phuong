@@ -33,6 +33,8 @@ function doPost(e) {
     const ids = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().flat() : [];
     if (ids.includes(data.submissionId)) return out({ ok: true, duplicate: true });
     const safe = value => { const s = String(value || '').trim(); return /^[=+\-@]/.test(s) ? "'" + s : s; };
+    // A leading apostrophe stores the phone as text, so Sheets keeps the leading 0 (0900... not 900...).
+    const text = value => { const s = safe(value); return s && !s.startsWith("'") ? "'" + s : s; };
     const join = values => (Array.isArray(values) ? values : []).map(safe).join(' | ');
     sheet.appendRow([
       data.submissionId, data.submittedAt, data.surveyVersion,
@@ -41,7 +43,7 @@ function doPost(e) {
       join(data.selections.premium), join(data.selectionNames.premium),
       safe(data.answers.budget), safe(data.answers.mainstream),
       safe(data.answers.premium), safe(data.answers.premiumSignals),
-      safe(data.respondent.name), safe(data.respondent.phone),
+      safe(data.respondent.name), text(data.respondent.phone),
       safe(data.surveyName || data.survey)
     ]);
     return out({ ok: true });
