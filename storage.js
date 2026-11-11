@@ -67,6 +67,13 @@ export const saveRegistry = (data, etag) => saveJson(registryKey, data, etag);
 export const loadSurvey = slug => loadJson(configKey(slug), emptySurvey);
 export const saveSurvey = (slug, data, etag) => saveJson(configKey(slug), data, etag);
 
+export async function removeSurveyConfig(slug) {
+  const key = configKey(slug);
+  if (!blobMode) { const file = localPath(key); if (existsSync(file)) await unlink(file); return; }
+  try { await del((await head(blobPrefix + key)).url); }
+  catch (error) { if (!(error instanceof BlobNotFoundError)) throw error; }
+}
+
 export async function saveImage(id, ext, bytes) {
   if (!blobMode) { await writeFile(join(dataDir, 'images', `${id}.${ext}`), bytes); return `/images/${id}.${ext}`; }
   const blob = await put(`${blobPrefix}survey/images/${id}.${ext}`, bytes, { access: 'public', contentType: ext === 'jpg' ? 'image/jpeg' : `image/${ext}` });
