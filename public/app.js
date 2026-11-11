@@ -26,12 +26,6 @@ const productType = () => survey.name ? `${survey.name.charAt(0).toLowerCase()}$
 // so it can be checked while it is being prepared. Submitting stays disabled until it really opens.
 const previewMode = new URLSearchParams(globalThis.location?.search || '').get('preview') === '1';
 const canContinue = () => sheetConfigured || previewMode;
-function previewBanner() {
-  if (!previewMode || sheetConfigured) return '';
-  const missing = Math.max(0, 9 - survey.products.length);
-  const reason = survey.open === false ? 'khảo sát đang đóng' : missing ? `cần thêm ${missing} ảnh, tối thiểu 9` : 'Google Sheet chưa được kết nối';
-  return `<p class="notice preview-notice" role="status">Bản xem thử: người tham gia chưa vào được khảo sát này vì ${reason}. Bạn có thể xem giao diện, nhưng chưa gửi được phản hồi.</p>`;
-}
 let isPreviewEnv = false, adminLoaded = false, adminSurveys = [], adminSurvey = { products: [] }, adminSlug = '';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const find = id => survey.products.find(p => p.id === id);
@@ -59,7 +53,7 @@ function restore() {
     questionIndex = Number.isInteger(d.questionIndex) && d.questionIndex >= 0 && d.questionIndex < groups.length ? d.questionIndex : 0;
   } catch { sessionStorage.removeItem(draftKey()); }
 }
-function hero(title, subtitle, eyebrow, number) { return `<section class="hero"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="sub">${subtitle}</p></div><span class="step">BƯỚC ${number} / 3</span></section>${previewBanner()}`; }
+function hero(title, subtitle, eyebrow, number) { return `<section class="hero"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="sub">${subtitle}</p></div><span class="step">BƯỚC ${number} / 3</span></section>`; }
 function renderSort() {
   const remaining = survey.products.filter(p => !groups.some(g => selected[g.id].includes(p.id)));
   const ready = groups.every(g => selected[g.id].length === 3);
