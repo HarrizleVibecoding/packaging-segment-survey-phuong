@@ -49,17 +49,68 @@ function renderSort() {
   app.innerHTML = hero('Bạn cảm nhận bao bì thuộc phân khúc nào?', 'Chọn 3 bao bì cho mỗi nhóm. Kéo thả trên máy tính hoặc chạm vào ảnh rồi chọn nhóm trên điện thoại.', '01 / PHÂN LOẠI BAO BÌ', 1)
     + `<div class="toolbar"><div class="progress">Bạn đã chọn <span>${total()} / 9</span> bao bì</div><button id="next" class="button" ${ready && sheetConfigured ? '' : 'disabled'}>Tiếp tục →</button></div>`
     + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
-    + `<div class="segments">${groups.map(g => `<section class="segment" data-drop="${g.id}" style="--accent:${g.color}"><div class="segment-title"><span class="dot"></span>${g.name}<span class="count">${selected[g.id].length}/3</span></div>${selected[g.id].length ? `<div class="slot-items">${selected[g.id].map(id => { const p = find(id); return p ? `<div class="slot"><button type="button" class="slot-media" data-zoom="${id}" aria-label="Phóng to ${esc(p.name)}"><span class="slot-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"></button><div class="slot-bar"><span class="slot-name" title="${esc(p.name)}">${esc(p.name)}</span><button type="button" class="slot-zoom" data-zoom="${id}" aria-label="Phóng to ${esc(p.name)}">⌕</button><button type="button" class="slot-remove" data-remove="${id}" aria-label="Bỏ ${esc(p.name)}">×</button></div></div>` : ''; }).join('')}</div>` : `<div class="hint">Thả bao bì vào đây</div>`}</section>`).join('')}</div>`
-    + `<section class="pool"><div class="pool-head"><h2>Bao bì chờ bạn chọn nhóm <span>${remaining.length}</span></h2><small>Nhấn kính lúp để xem ảnh lớn</small></div><div class="cards">${remaining.map(p => `<div class="card" draggable="true" data-id="${p.id}" tabindex="0"><span class="badge">${productNumber(p.id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><button class="zoom" data-zoom="${p.id}" aria-label="Phóng to ${esc(p.name)}">⌕</button><span class="card-name">${esc(p.name)}</span><div class="assign">${groups.map(g => `<button data-assign="${g.id}" data-id="${p.id}" aria-label="Xếp ${esc(p.name)} vào ${g.name}">${g.short}</button>`).join('')}</div></div>`).join('')}</div></section>`;
+    + `<div class="segments">${groups.map(g => `<section class="segment" data-drop="${g.id}" style="--accent:${g.color}"><div class="segment-title"><span class="dot"></span>${g.name}<span class="count">${selected[g.id].length}/3</span></div>${selected[g.id].length ? `<div class="slot-items">${selected[g.id].map(id => { const p = find(id); return p ? `<div class="slot" draggable="true" data-id="${id}" data-group="${g.id}"><button type="button" class="slot-media" data-move="${id}" aria-label="Chuyển nhóm hoặc đổi chỗ ${esc(p.name)}" title="Kéo sang nhóm khác hoặc chạm để chuyển nhóm"><span class="slot-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}" draggable="false"></button><div class="slot-bar"><span class="slot-name" title="${esc(p.name)}">${esc(p.name)}</span><button type="button" class="slot-zoom" data-zoom="${id}" aria-label="Phóng to ${esc(p.name)}">⌕</button><button type="button" class="slot-remove" data-remove="${id}" aria-label="Bỏ ${esc(p.name)}">×</button></div></div>` : ''; }).join('')}</div>` : `<div class="hint">Thả bao bì vào đây</div>`}</section>`).join('')}</div>`
+    + `<section class="pool" data-pool><div class="pool-head"><h2>Bao bì chờ bạn chọn nhóm <span>${remaining.length}</span></h2><small>Nhấn kính lúp để xem ảnh lớn</small></div><div class="cards">${remaining.map(p => `<div class="card" draggable="true" data-id="${p.id}" tabindex="0"><span class="badge">${productNumber(p.id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><button class="zoom" data-zoom="${p.id}" aria-label="Phóng to ${esc(p.name)}">⌕</button><span class="card-name">${esc(p.name)}</span><div class="assign">${groups.map(g => `<button data-assign="${g.id}" data-id="${p.id}" aria-label="Xếp ${esc(p.name)} vào ${g.name}">${g.short}</button>`).join('')}</div></div>`).join('')}</div></section>`;
   app.querySelector('#next').onclick = () => { step = 'questions'; questionIndex = 0; persist(); render(); window.scrollTo(0, 0); };
   app.querySelectorAll('[data-assign]').forEach(b => b.onclick = e => { e.stopPropagation(); assign(b.dataset.id, b.dataset.assign); });
-  app.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { groups.forEach(g => selected[g.id] = selected[g.id].filter(id => id !== b.dataset.remove)); persist(); renderSort(); });
+  app.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { unselect(b.dataset.remove); persist(); renderSort(); });
   app.querySelectorAll('[data-zoom]').forEach(b => b.onclick = e => { e.stopPropagation(); zoom(b.dataset.zoom); });
-  app.querySelectorAll('.card').forEach(card => { card.ondragstart = e => e.dataTransfer.setData('text/plain', card.dataset.id); card.onclick = e => { if (!e.target.closest('button')) openAssign(card.dataset.id); }; card.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === card) { e.preventDefault(); openAssign(card.dataset.id); } }; });
-  app.querySelectorAll('[data-drop]').forEach(zone => { zone.ondragover = e => e.preventDefault(); zone.ondrop = e => { e.preventDefault(); assign(e.dataTransfer.getData('text/plain'), zone.dataset.drop); }; });
+  app.querySelectorAll('[data-move]').forEach(b => b.onclick = () => openAssign(b.dataset.move));
+  app.querySelectorAll('.card, .slot').forEach(el => { el.ondragstart = e => { e.dataTransfer.setData('text/plain', el.dataset.id); e.dataTransfer.effectAllowed = 'move'; el.classList.add('dragging'); }; el.ondragend = clearDropMarks; });
+  app.querySelectorAll('.card').forEach(card => { card.onclick = e => { if (!e.target.closest('button')) openAssign(card.dataset.id); }; card.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === card) { e.preventDefault(); openAssign(card.dataset.id); } }; });
+  app.querySelectorAll('.slot').forEach(slot => {
+    slot.ondragover = e => { e.preventDefault(); e.stopPropagation(); clearDropMarks(false); if (!slot.classList.contains('dragging')) slot.classList.add('swap-target'); slot.closest('[data-drop]').classList.add('drag-over'); };
+    slot.ondrop = e => { e.preventDefault(); e.stopPropagation(); assign(e.dataTransfer.getData('text/plain'), slot.dataset.group, slot.dataset.id); };
+  });
+  app.querySelectorAll('[data-drop]').forEach(zone => {
+    zone.ondragover = e => { e.preventDefault(); clearDropMarks(false); zone.classList.add('drag-over'); };
+    zone.ondragleave = e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over'); };
+    zone.ondrop = e => { e.preventDefault(); assign(e.dataTransfer.getData('text/plain'), zone.dataset.drop); };
+  });
+  const pool = app.querySelector('[data-pool]');
+  pool.ondragover = e => { e.preventDefault(); clearDropMarks(false); pool.classList.add('drag-over'); };
+  pool.ondragleave = e => { if (!pool.contains(e.relatedTarget)) pool.classList.remove('drag-over'); };
+  pool.ondrop = e => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (groupOf(id)) { unselect(id); error = ''; persist(); } renderSort(); };
 }
-function assign(id, group) { if (!find(id) || !groups.some(g => g.id === group)) return; if (!selected[group].includes(id) && selected[group].length >= 3) { error = 'Mỗi nhóm chỉ nhận tối đa 3 bao bì.'; renderSort(); return; } groups.forEach(g => selected[g.id] = selected[g.id].filter(x => x !== id)); selected[group].push(id); error = ''; persist(); renderSort(); }
-function openAssign(id) { const p = find(id); if (!p) return; assignDialog.querySelector('#assignCaption').textContent = p.name; assignDialog.querySelector('#assignOptions').innerHTML = groups.map(g => `<button class="button" data-group="${g.id}" ${selected[g.id].length >= 3 ? 'disabled' : ''}>${g.name} · ${selected[g.id].length}/3</button>`).join(''); assignDialog.querySelectorAll('[data-group]').forEach(b => b.onclick = () => { assignDialog.close(); assign(id, b.dataset.group); }); assignDialog.showModal(); }
+function clearDropMarks(all = true) { app.querySelectorAll(all ? '.drag-over, .swap-target, .dragging' : '.drag-over, .swap-target').forEach(el => el.classList.remove('drag-over', 'swap-target', 'dragging')); }
+const groupOf = id => groups.find(g => selected[g.id].includes(id))?.id || null;
+function unselect(id) { groups.forEach(g => selected[g.id] = selected[g.id].filter(x => x !== id)); }
+// Move a package into a group. With targetId, swap places with that package:
+// the target takes the moved package's old spot (or returns to the pool).
+function assign(id, group, targetId) {
+  if (!find(id) || !groups.some(g => g.id === group)) return;
+  const from = groupOf(id);
+  if (targetId && targetId !== id && selected[group].includes(targetId)) {
+    const ti = selected[group].indexOf(targetId);
+    if (from) { const fi = selected[from].indexOf(id); selected[from][fi] = targetId; }
+    selected[group][ti] = id;
+  } else if (from !== group) {
+    if (selected[group].length >= 3) { error = `Nhóm ${groups.find(g => g.id === group).name} đã đủ 3 bao bì. Hãy thả lên bao bì bạn muốn đổi chỗ.`; renderSort(); return; }
+    unselect(id); selected[group].push(id);
+  }
+  error = ''; persist(); renderSort();
+}
+function openAssign(id) {
+  const p = find(id); if (!p) return;
+  const from = groupOf(id);
+  const options = assignDialog.querySelector('#assignOptions');
+  assignDialog.querySelector('#assignTitle').textContent = from ? 'Chuyển bao bì sang nhóm khác' : 'Chọn nhóm cho bao bì';
+  assignDialog.querySelector('#assignCaption').textContent = p.name;
+  options.className = '';
+  options.innerHTML = groups.map(g => g.id === from ? `<button class="button" disabled>${g.name} · nhóm hiện tại</button>` : `<button class="button" data-group="${g.id}">${g.name} · ${selected[g.id].length}/3${selected[g.id].length >= 3 ? ' · đổi chỗ' : ''}</button>`).join('');
+  options.querySelectorAll('[data-group]').forEach(b => b.onclick = () => { const group = b.dataset.group; if (selected[group].length < 3) { assignDialog.close(); assign(id, group); } else openSwap(id, group); });
+  if (!assignDialog.open) assignDialog.showModal();
+}
+function openSwap(id, group) {
+  const p = find(id), g = groups.find(x => x.id === group), from = groupOf(id);
+  const options = assignDialog.querySelector('#assignOptions');
+  assignDialog.querySelector('#assignTitle').textContent = `Nhóm ${g.name} đã đủ 3`;
+  assignDialog.querySelector('#assignCaption').textContent = `Chọn bao bì sẽ đổi chỗ với "${p.name}". Bao bì đó sẽ ${from ? `chuyển sang nhóm ${groups.find(x => x.id === from).name}` : 'quay về khu vực chờ'}.`;
+  options.className = 'swap-options';
+  options.innerHTML = selected[group].map(tid => { const t = find(tid); return t ? `<button type="button" class="swap-choice" data-target="${tid}"><span class="slot-badge">${productNumber(tid)}</span><img src="${esc(t.image)}" alt=""><span>${esc(t.name)}</span></button>` : ''; }).join('') + `<button type="button" class="button secondary swap-back">← Chọn nhóm khác</button>`;
+  options.querySelectorAll('[data-target]').forEach(b => b.onclick = () => { assignDialog.close(); assign(id, group, b.dataset.target); });
+  options.querySelector('.swap-back').onclick = () => openAssign(id);
+}
 assignDialog.querySelector('#closeAssign').onclick = () => assignDialog.close();
 assignDialog.onclick = e => { if (e.target === assignDialog) assignDialog.close(); };
 function zoom(id) { const p = find(id); if (!p) return; document.querySelector('#zoomImage').src = p.image; document.querySelector('#zoomImage').alt = p.name; document.querySelector('#zoomCaption').textContent = `Bao bì ${productNumber(id)} · ${p.name}`; dialog.showModal(); }
