@@ -24,3 +24,6 @@
 .question-tab:not(:disabled):active,.zoom:active{transform:scale(.96)}
 .zoom:hover{border-color:#1d6075;background:#eef6f8;color:#173e4b}
 @media(prefers-reduced-motion:reduce){.button,.question-tab,.zoom{transition:none}.button:not(:disabled):hover,.button:not(:disabled):active,.question-tab:not(:disabled):active,.zoom:active{transform:none}}
+.top-right a.pill-link{display:inline-block;color:#50676b;transition:background-color .15s,border-color .15s,color .15s}
+.top-right a.pill-link:hover{background:#eef6f8;border-color:#1d6075;color:#173e4b}
+.top-right a.pill-link:focus-visible{outline:3px solid #1d6075;outline-offset:2px}
