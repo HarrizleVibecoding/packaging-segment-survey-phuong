@@ -43,11 +43,22 @@ test('upload, phân loại, gửi Sheet và chống gửi trùng', async () => {
     assert.equal((await api('/api/admin/products', 'POST', { name: 'Quá lớn', image: 'data:image/png;base64,' + Buffer.alloc(3_000_001).toString('base64') }, 'admin-secret')).status, 400);
     assert.equal((await api('/api/admin/products', 'POST', { name: 'Bao bì mới', image: png }, 'admin-secret')).status, 201);
     assert.equal((await api('/api/responses', 'POST', { ...payload, submissionId: crypto.randomUUID() })).status, 201, 'Thêm ảnh không được làm mất phản hồi đang thực hiện.');
+    assert.equal((await api(`/api/admin/products/${ids[3]}`, 'PATCH', { name: 'Tên mới' })).status, 401, 'Đổi tên cần mã quản trị.');
+    assert.equal((await api(`/api/admin/products/${ids[3]}`, 'PATCH', { name: '   ' }, 'admin-secret')).status, 400);
+    assert.equal((await api(`/api/admin/products/${ids[3]}`, 'PATCH', { name: 'x'.repeat(101) }, 'admin-secret')).status, 400);
+    assert.equal((await api('/api/admin/products/khong-co', 'PATCH', { name: 'Tên mới' }, 'admin-secret')).status, 404);
+    const renamed = await api(`/api/admin/products/${ids[3]}`, 'PATCH', { name: '  Tên mới  ' }, 'admin-secret');
+    assert.equal(renamed.status, 200);
+    const product = renamed.data.products.find(p => p.id === ids[3]);
+    assert.equal(product.name, 'Tên mới');
+    assert.equal(product.image, survey.products[3].image, 'Đổi tên giữ nguyên ảnh.');
+    assert.equal((await api('/api/responses', 'POST', { ...payload, submissionId: crypto.randomUUID() })).status, 201, 'Đổi tên không làm mất phản hồi đang thực hiện.');
+    assert.deepEqual(lastSheetPayload.selectionNames.mainstream, ['Tên mới', 'Bao bì 5', 'Bao bì 6'], 'Phản hồi sau khi đổi tên ghi tên mới.');
     assert.equal((await api(`/api/admin/products/${ids[0]}`, 'DELETE', undefined, 'admin-secret')).status, 200);
     const changed = await api('/api/responses', 'POST', { ...payload, submissionId: crypto.randomUUID() });
     assert.equal(changed.status, 409);
     assert.equal(changed.data.code, 'SURVEY_CHANGED');
-    assert.equal(sheetRows, 2);
+    assert.equal(sheetRows, 3);
     for (let i = 10; i <= 30; i++) {
       const added = await api('/api/admin/products', 'POST', { name: `Bao bì ${i}`, image: png }, 'admin-secret');
       assert.equal(added.status, 201);

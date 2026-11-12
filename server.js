@@ -201,6 +201,20 @@ export async function handler(req, res) {
         return json(res, 201, survey);
       } catch (error) { await removeImage(image).catch(() => {}); throw error; }
     }
+    // Renaming keeps the image and product ID, so drafts in progress stay valid.
+    // Rows already in Google Sheets keep the name they were submitted with.
+    if (req.method === 'PATCH' && path.startsWith('/api/admin/products/')) {
+      const slug = requestedSlug(url.searchParams.get('s')); await surveyMeta(slug);
+      const id = path.split('/').at(-1), input = await body(req, 10_000);
+      const name = typeof input?.name === 'string' ? input.name.trim() : '';
+      if (!name || name.length > 100) throw new Error('Tên bao bì cần từ 1 đến 100 ký tự.');
+      const { survey } = await updateSurvey(slug, data => {
+        const product = data.products.find(p => p.id === id);
+        if (!product) throw httpError(404, 'Không tìm thấy bao bì.');
+        product.name = name;
+      });
+      return json(res, 200, survey);
+    }
     if (req.method === 'DELETE' && path.startsWith('/api/admin/products/')) {
       const slug = requestedSlug(url.searchParams.get('s')); await surveyMeta(slug);
       const id = path.split('/').at(-1);
