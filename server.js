@@ -3,8 +3,8 @@ import { readFile, appendFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { BlobPreconditionFailedError } from '@vercel/blob';
-import { initStorage, loadRegistry, saveRegistry, loadSurvey, saveSurvey, removeSurveyConfig, saveImage, removeImage, dataDir, blobMode, defaultSlug, isPreview } from './storage.js';
+import { pathToFileURL } from 'node:url';
+import { initStorage, loadRegistry, saveRegistry, loadSurvey, saveSurvey, removeSurveyConfig, saveImage, readImage, removeImage, StorageConflictError, dataDir, blobMode, defaultSlug, isPreview } from './storage.js';
 
 const root = resolve(import.meta.dirname);
 const staticFiles = {
@@ -49,7 +49,7 @@ async function updateJson(load, save, change, firstLoad) {
     const result = change(data);
     try { await save(data, etag); return { data, result }; }
     catch (error) {
-      if (!(error instanceof BlobPreconditionFailedError)) throw error;
+      if (!(error instanceof StorageConflictError)) throw error;
       if (attempt === 4) throw httpError(503, 'Dữ liệu đang được cập nhật. Vui lòng thử lại sau vài giây.');
     }
   }
@@ -251,7 +251,9 @@ export async function handler(req, res) {
     }
     if (req.method === 'GET' && path.startsWith('/images/')) {
       const filename = path.slice(8); if (!/^[a-f0-9-]{36}\.(png|jpg|webp)$/.test(filename)) return json(res, 404, { error: 'Không tìm thấy ảnh.' });
-      const bytes = await readFile(join(dataDir, 'images', filename)); res.writeHead(200, { 'Content-Type': mime[extname(filename)], 'Cache-Control': 'public, max-age=86400' }); return res.end(bytes);
+      const bytes = await readImage(filename); if (!bytes) return json(res, 404, { error: 'Không tìm thấy ảnh.' });
+      // Each image file has a unique ID and never changes, so browsers and CDNs can keep it.
+      res.writeHead(200, { 'Content-Type': mime[extname(filename)], 'Cache-Control': 'public, max-age=31536000, immutable', 'CDN-Cache-Control': 'public, max-age=31536000, immutable' }); return res.end(bytes);
     }
     if (req.method === 'GET') {
       // Survey links (/s/<slug>) serve the same page; the frontend reads the slug from the URL.
@@ -263,5 +265,7 @@ export async function handler(req, res) {
   } catch (error) { json(res, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.message || 'Có lỗi xảy ra.' }); }
 }
 export default handler;
-if (process.env.VERCEL !== '1') createServer(handler).listen(port, host, () => console.log(`Survey: http://${host}:${port}`));
+// Listen only when started with `node server.js`; Vercel and the Netlify Function import the handler.
+const startedDirectly = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+if (process.env.VERCEL !== '1' && startedDirectly) createServer(handler).listen(port, host, () => console.log(`Survey: http://${host}:${port}`));
 export { validateSubmission, cleanSheet, slugify };
