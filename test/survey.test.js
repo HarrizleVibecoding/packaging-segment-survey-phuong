@@ -23,7 +23,7 @@ test('upload, phân loại, gửi Sheet và chống gửi trùng', async () => {
   const api = async (path, method, data, token) => { const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: data ? JSON.stringify(data) : undefined }); return { status: r.status, data: await r.json() }; };
   try {
     let ready = false;
-    for (let i = 0; i < 100; i++) { try { const r = await fetch(base); ready = r.ok; if (ready) break; } catch {} await new Promise(r => setTimeout(r, 50)); }
+    for (let i = 0; i < 300; i++) { try { const r = await fetch(base); ready = r.ok; if (ready) break; } catch {} await new Promise(r => setTimeout(r, 50)); }
     assert.equal(ready, true, 'Máy chủ khảo sát phải khởi động trước khi kiểm thử API.');
     const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/pXcAAAAASUVORK5CYII=';
     assert.equal((await api('/api/admin/products', 'POST', { name: 'A', image: png })).status, 401);

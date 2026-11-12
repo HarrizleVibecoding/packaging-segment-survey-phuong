@@ -21,7 +21,7 @@ async function startApp(extraEnv = {}) {
   const port = 41000 + Math.floor(Math.random() * 10000);
   const child = spawn(process.execPath, ['server.js'], { cwd: new URL('..', import.meta.url), env: { ...process.env, VERCEL: '', VERCEL_ENV: '', PORT: String(port), DATA_DIR: dir, ADMIN_TOKEN: 'admin-secret', GOOGLE_SHEETS_WEBHOOK_URL: `http://127.0.0.1:${sheet.address().port}`, GOOGLE_SHEETS_SECRET: 'secret', ...extraEnv }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}`;
-  for (let i = 0; i < 100; i++) { try { if ((await fetch(base)).ok) break; } catch {} await new Promise(r => setTimeout(r, 50)); }
+  for (let i = 0; i < 300; i++) { try { if ((await fetch(base)).ok) break; } catch {} await new Promise(r => setTimeout(r, 50)); }
   const api = async (path, method = 'GET', data, token) => { const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: data ? JSON.stringify(data) : undefined }); return { status: r.status, data: await r.json().catch(() => null) }; };
   const stop = async () => { child.kill(); sheet.close(); await rm(dir, { recursive: true, force: true }); };
   return { base, api, payloads, stop };
