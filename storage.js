@@ -29,6 +29,10 @@ export async function initStorage() {
   if (!existsSync(file)) await writeFile(file, JSON.stringify(emptySurvey(), null, 2));
 }
 
+// The Blob API and the CDN can write the same ETag differently (quoted, weak "W/" prefix).
+const bareEtag = etag => String(etag || '').trim().replace(/^W\//i, '').replace(/^"|"$/g, '');
+const sameEtag = (a, b) => Boolean(bareEtag(a)) && bareEtag(a) === bareEtag(b);
+
 async function loadJson(key, fallback) {
   if (!blobMode) {
     const file = localPath(key);
@@ -39,12 +43,17 @@ async function loadJson(key, fallback) {
   let metadata;
   try { metadata = await head(path); }
   catch (error) { if (error instanceof BlobNotFoundError) return { data: fallback(), etag: null }; throw error; }
-  const url = new URL(metadata.url);
-  url.searchParams.set('v', randomUUID());
-  const result = await get(url.toString(), { access: 'public' });
-  if (!result || result.statusCode !== 200) throw new Error('Không thể đọc cấu hình khảo sát.');
-  if (result.blob.etag === metadata.etag) return { data: JSON.parse(await new Response(result.stream).text()), etag: metadata.etag };
-  await result.stream.cancel();
+  // A fresh URL skips the CDN cache. Reading again is a cheap Simple Operation; the copy below
+  // is an Advanced Operation (2,000/month on Hobby), so it is only the last resort.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const url = new URL(metadata.url);
+    url.searchParams.set('v', randomUUID());
+    const result = await get(url.toString(), { access: 'public' });
+    if (!result || result.statusCode !== 200) throw new Error('Không thể đọc cấu hình khảo sát.');
+    if (sameEtag(result.blob.etag, metadata.etag)) return { data: JSON.parse(await new Response(result.stream).text()), etag: metadata.etag };
+    await result.stream.cancel();
+    if (attempt === 1) console.warn('Blob read used a copy (etag mismatch)', { key, head: metadata.etag, get: result.blob.etag });
+  }
   const snapshot = await copy(path, `${blobPrefix}survey/read-${randomUUID()}.json`, { access: 'public', contentType: 'application/json' });
   try {
     const fresh = await get(snapshot.url, { access: 'public' });
