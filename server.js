@@ -127,13 +127,19 @@ async function adminSurveyList() {
 export async function handler(req, res) {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`), path = url.pathname;
+    // Respondents never get brand names, so they judge the packaging alone. The server still looks
+    // names up by ID when writing to Google Sheets; admins read them from /api/admin/library.
     if (req.method === 'GET' && path === '/api/survey') {
       const slug = requestedSlug(url.searchParams.get('s')), meta = await surveyMeta(slug), { data } = await loadSurvey(slug);
-      return json(res, 200, { ...data, slug, name: meta.name, open: meta.open, acceptingResponses: accepting(meta, data) });
+      return json(res, 200, { ...data, products: data.products.map(({ id, image }) => ({ id, image })), slug, name: meta.name, open: meta.open, acceptingResponses: accepting(meta, data) });
     }
     if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: sheetReady, adminConfigured: Boolean(adminToken), preview: isPreview });
-    if (path === '/api/admin/surveys' || path.startsWith('/api/admin/surveys/') || path.startsWith('/api/admin/products')) {
+    if (path === '/api/admin/library' || path === '/api/admin/surveys' || path.startsWith('/api/admin/surveys/') || path.startsWith('/api/admin/products')) {
       if (!auth(req)) return json(res, 401, { error: 'Mã quản trị không đúng hoặc chưa được cấu hình.' });
+    }
+    if (req.method === 'GET' && path === '/api/admin/library') {
+      const slug = requestedSlug(url.searchParams.get('s')), meta = await surveyMeta(slug), { data } = await loadSurvey(slug);
+      return json(res, 200, { ...data, slug, name: meta.name, open: meta.open, acceptingResponses: accepting(meta, data) });
     }
     if (req.method === 'GET' && path === '/api/admin/surveys') return json(res, 200, { surveys: await adminSurveyList() });
     if (req.method === 'POST' && path === '/api/admin/surveys') {

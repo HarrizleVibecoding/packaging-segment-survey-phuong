@@ -30,6 +30,10 @@ test('upload, phân loại, gửi Sheet và chống gửi trùng', async () => {
     for (let i = 1; i <= 9; i++) assert.equal((await api('/api/admin/products', 'POST', { name: `Bao bì ${i}`, image: png }, 'admin-secret')).status, 201);
     const survey = (await api('/api/survey', 'GET')).data;
     assert.equal(survey.products.length, 9);
+    assert.ok(survey.products.every(p => p.id && p.image && !('name' in p)), 'Người làm khảo sát không nhận tên Brand.');
+    assert.equal((await api('/api/admin/library', 'GET')).status, 401, 'Thư viện có tên Brand cần mã quản trị.');
+    const library = (await api('/api/admin/library', 'GET', undefined, 'admin-secret')).data;
+    assert.deepEqual(library.products.map(p => p.name), Array.from({ length: 9 }, (_, i) => `Bao bì ${i + 1}`));
     const ids = survey.products.map(p => p.id);
     const payload = { submissionId: crypto.randomUUID(), surveyVersion: survey.version, selections: { budget: ids.slice(0, 3), mainstream: ids.slice(3, 6), premium: ids.slice(6, 9) }, answers: { budget: 'Lý do nhóm giá rẻ', mainstream: 'Lý do nhóm phổ thông', premium: 'Lý do nhóm cao cấp' }, respondent: { name: 'Nguyễn Văn A', phone: '' } };
     assert.equal((await api('/api/responses', 'POST', { ...payload, selections: { ...payload.selections, premium: ids.slice(0, 3) } })).status, 400);
