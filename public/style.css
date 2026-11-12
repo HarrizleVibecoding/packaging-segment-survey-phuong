@@ -33,3 +33,4 @@
 .admin-item-actions{display:flex;justify-content:center;gap:14px}.admin-item-actions[hidden],.admin-item strong[hidden]{display:none}
 .admin-item .admin-rename{color:#1d6075;font-weight:700}.admin-item button:hover{text-decoration:underline}.admin-item button:disabled{opacity:.5;cursor:default}
 .admin-rename-form input{width:100%;border:1px solid #1d6075;border-radius:7px;padding:5px 7px;font:12px "DM Sans";color:#172b34;text-align:center}
+.question-product>button,.mini-products button,.mini-products img{background:#fff}
