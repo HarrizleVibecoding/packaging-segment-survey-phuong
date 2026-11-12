@@ -30,3 +30,6 @@
 .slot,.slot-media,.swap-choice{background:#fff}.upload-row img{background:#fff;border:1px solid #e1e6e5}
 .slot-bar{background:color-mix(in srgb,var(--accent) 14%,#fff);border-top-color:color-mix(in srgb,var(--accent) 30%,#fff)}
 .slot-name{color:#173e4b;font-weight:800}.card-name{color:#173e4b;font-weight:800}
+.admin-item-actions{display:flex;justify-content:center;gap:14px}.admin-item-actions[hidden],.admin-item strong[hidden]{display:none}
+.admin-item .admin-rename{color:#1d6075;font-weight:700}.admin-item button:hover{text-decoration:underline}.admin-item button:disabled{opacity:.5;cursor:default}
+.admin-rename-form input{width:100%;border:1px solid #1d6075;border-radius:7px;padding:5px 7px;font:12px "DM Sans";color:#172b34;text-align:center}
