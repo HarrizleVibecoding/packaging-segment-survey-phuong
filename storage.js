@@ -32,6 +32,7 @@ export async function initStorage() {
 // The Blob API and the CDN can write the same ETag differently (quoted, weak "W/" prefix).
 const bareEtag = etag => String(etag || '').trim().replace(/^W\//i, '').replace(/^"|"$/g, '');
 const sameEtag = (a, b) => Boolean(bareEtag(a)) && bareEtag(a) === bareEtag(b);
+let loggedEtagFormat = false;
 
 async function loadJson(key, fallback) {
   if (!blobMode) {
@@ -50,6 +51,7 @@ async function loadJson(key, fallback) {
     url.searchParams.set('v', randomUUID());
     const result = await get(url.toString(), { access: 'public' });
     if (!result || result.statusCode !== 200) throw new Error('Không thể đọc cấu hình khảo sát.');
+    if (!loggedEtagFormat) { loggedEtagFormat = true; console.log('Blob etag formats', { head: metadata.etag, get: result.blob.etag, rawEqual: result.blob.etag === metadata.etag }); }
     if (sameEtag(result.blob.etag, metadata.etag)) return { data: JSON.parse(await new Response(result.stream).text()), etag: metadata.etag };
     await result.stream.cancel();
     if (attempt === 1) console.warn('Blob read used a copy (etag mismatch)', { key, head: metadata.etag, get: result.blob.etag });
