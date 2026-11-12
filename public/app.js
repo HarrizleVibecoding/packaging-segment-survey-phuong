@@ -33,6 +33,8 @@ let isPreviewEnv = false, adminLoaded = false, adminSurveys = [], adminSurvey = 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const find = id => survey.products.find(p => p.id === id);
 const productNumber = id => String(survey.products.findIndex(p => p.id === id) + 1).padStart(2, '0');
+// Respondents see packages by number only; brand names stay in the admin area.
+const packageLabel = id => `Bao bì ${productNumber(id)}`;
 const total = () => groups.reduce((n, g) => n + selected[g.id].length, 0);
 function persist() { sessionStorage.setItem(draftKey(), JSON.stringify({ version: survey.version, selected, answers, respondent, submissionId, step, questionIndex })); }
 function restore() {
@@ -63,8 +65,8 @@ function renderSort() {
   app.innerHTML = hero(`Bạn cảm nhận bao bì ${esc(productType())}thuộc phân khúc nào?`, 'Chọn 3 bao bì cho mỗi nhóm. Kéo thả trên máy tính hoặc chạm vào ảnh rồi chọn nhóm trên điện thoại.', '01 / PHÂN LOẠI BAO BÌ', 1)
     + `<div class="toolbar"><div class="progress">Bạn đã chọn <span>${total()} / 9</span> bao bì</div><button id="next" class="button" ${ready && canContinue() ? '' : 'disabled'}>Tiếp tục →</button></div>`
     + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
-    + `<div class="segments">${groups.map(g => `<section class="segment" data-drop="${g.id}" style="--accent:${g.color}"><div class="segment-title"><span class="dot"></span>${g.name}<span class="count">${selected[g.id].length}/3</span></div>${selected[g.id].length ? `<div class="slot-items">${selected[g.id].map(id => { const p = find(id); return p ? `<div class="slot" draggable="true" data-id="${id}" data-group="${g.id}"><button type="button" class="slot-media" data-move="${id}" aria-label="Chuyển nhóm hoặc đổi chỗ ${esc(p.name)}" title="Kéo sang nhóm khác hoặc chạm để chuyển nhóm"><span class="slot-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}" draggable="false"></button><div class="slot-bar"><span class="slot-name" title="${esc(p.name)}">${esc(p.name)}</span><button type="button" class="slot-zoom" data-zoom="${id}" aria-label="Phóng to ${esc(p.name)}">⌕</button><button type="button" class="slot-remove" data-remove="${id}" aria-label="Bỏ ${esc(p.name)}">×</button></div></div>` : ''; }).join('')}</div>` : `<div class="hint">Thả bao bì vào đây</div>`}</section>`).join('')}</div>`
-    + `<section class="pool" data-pool><div class="pool-head"><h2>Bao bì chờ bạn chọn nhóm <span>${remaining.length}</span></h2><small>Nhấn kính lúp để xem ảnh lớn</small></div><div class="cards">${remaining.map(p => `<div class="card" draggable="true" data-id="${p.id}" tabindex="0"><span class="badge">${productNumber(p.id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><button class="zoom" data-zoom="${p.id}" aria-label="Phóng to ${esc(p.name)}">⌕</button><span class="card-name">${esc(p.name)}</span><div class="assign">${groups.map(g => `<button data-assign="${g.id}" data-id="${p.id}" aria-label="Xếp ${esc(p.name)} vào ${g.name}">${g.short}</button>`).join('')}</div></div>`).join('')}</div></section>`;
+    + `<div class="segments">${groups.map(g => `<section class="segment" data-drop="${g.id}" style="--accent:${g.color}"><div class="segment-title"><span class="dot"></span>${g.name}<span class="count">${selected[g.id].length}/3</span></div>${selected[g.id].length ? `<div class="slot-items">${selected[g.id].map(id => { const p = find(id); return p ? `<div class="slot" draggable="true" data-id="${id}" data-group="${g.id}"><button type="button" class="slot-media" data-move="${id}" aria-label="Chuyển nhóm hoặc đổi chỗ ${packageLabel(id)}" title="Kéo sang nhóm khác hoặc chạm để chuyển nhóm"><span class="slot-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${packageLabel(id)}" draggable="false"></button><div class="slot-bar"><span class="slot-name"></span><button type="button" class="slot-zoom" data-zoom="${id}" aria-label="Phóng to ${packageLabel(id)}">⌕</button><button type="button" class="slot-remove" data-remove="${id}" aria-label="Bỏ ${packageLabel(id)}">×</button></div></div>` : ''; }).join('')}</div>` : `<div class="hint">Thả bao bì vào đây</div>`}</section>`).join('')}</div>`
+    + `<section class="pool" data-pool><div class="pool-head"><h2>Bao bì chờ bạn chọn nhóm <span>${remaining.length}</span></h2><small>Nhấn kính lúp để xem ảnh lớn</small></div><div class="cards">${remaining.map(p => `<div class="card" draggable="true" data-id="${p.id}" tabindex="0"><span class="badge">${productNumber(p.id)}</span><img src="${esc(p.image)}" alt="${packageLabel(p.id)}"><button class="zoom" data-zoom="${p.id}" aria-label="Phóng to ${packageLabel(p.id)}">⌕</button><div class="assign">${groups.map(g => `<button data-assign="${g.id}" data-id="${p.id}" aria-label="Xếp ${packageLabel(p.id)} vào ${g.name}">${g.short}</button>`).join('')}</div></div>`).join('')}</div></section>`;
   app.querySelector('#next').onclick = () => { step = 'questions'; questionIndex = 0; persist(); render(); window.scrollTo(0, 0); };
   app.querySelectorAll('[data-assign]').forEach(b => b.onclick = e => { e.stopPropagation(); assign(b.dataset.id, b.dataset.assign); });
   app.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { unselect(b.dataset.remove); persist(); renderSort(); });
@@ -109,7 +111,7 @@ function openAssign(id) {
   const from = groupOf(id);
   const options = assignDialog.querySelector('#assignOptions');
   assignDialog.querySelector('#assignTitle').textContent = from ? 'Chuyển bao bì sang nhóm khác' : 'Chọn nhóm cho bao bì';
-  assignDialog.querySelector('#assignCaption').textContent = p.name;
+  assignDialog.querySelector('#assignCaption').textContent = packageLabel(id);
   options.className = '';
   options.innerHTML = groups.map(g => g.id === from ? `<button class="button" disabled>${g.name} · nhóm hiện tại</button>` : `<button class="button" data-group="${g.id}">${g.name} · ${selected[g.id].length}/3${selected[g.id].length >= 3 ? ' · đổi chỗ' : ''}</button>`).join('');
   options.querySelectorAll('[data-group]').forEach(b => b.onclick = () => { const group = b.dataset.group; if (selected[group].length < 3) { assignDialog.close(); assign(id, group); } else openSwap(id, group); });
@@ -119,15 +121,15 @@ function openSwap(id, group) {
   const p = find(id), g = groups.find(x => x.id === group), from = groupOf(id);
   const options = assignDialog.querySelector('#assignOptions');
   assignDialog.querySelector('#assignTitle').textContent = `Nhóm ${g.name} đã đủ 3`;
-  assignDialog.querySelector('#assignCaption').textContent = `Chọn bao bì sẽ đổi chỗ với "${p.name}". Bao bì đó sẽ ${from ? `chuyển sang nhóm ${groups.find(x => x.id === from).name}` : 'quay về khu vực chờ'}.`;
+  assignDialog.querySelector('#assignCaption').textContent = `Chọn bao bì sẽ đổi chỗ với ${packageLabel(id)}. Bao bì đó sẽ ${from ? `chuyển sang nhóm ${groups.find(x => x.id === from).name}` : 'quay về khu vực chờ'}.`;
   options.className = 'swap-options';
-  options.innerHTML = selected[group].map(tid => { const t = find(tid); return t ? `<button type="button" class="swap-choice" data-target="${tid}"><span class="slot-badge">${productNumber(tid)}</span><img src="${esc(t.image)}" alt=""><span>${esc(t.name)}</span></button>` : ''; }).join('') + `<button type="button" class="button secondary swap-back">← Chọn nhóm khác</button>`;
+  options.innerHTML = selected[group].map(tid => { const t = find(tid); return t ? `<button type="button" class="swap-choice" data-target="${tid}"><span class="slot-badge">${productNumber(tid)}</span><img src="${esc(t.image)}" alt=""><span>${packageLabel(tid)}</span></button>` : ''; }).join('') + `<button type="button" class="button secondary swap-back">← Chọn nhóm khác</button>`;
   options.querySelectorAll('[data-target]').forEach(b => b.onclick = () => { assignDialog.close(); assign(id, group, b.dataset.target); });
   options.querySelector('.swap-back').onclick = () => openAssign(id);
 }
 assignDialog.querySelector('#closeAssign').onclick = () => assignDialog.close();
 assignDialog.onclick = e => { if (e.target === assignDialog) assignDialog.close(); };
-function zoom(id) { const p = find(id); if (!p) return; document.querySelector('#zoomImage').src = p.image; document.querySelector('#zoomImage').alt = p.name; document.querySelector('#zoomCaption').textContent = `Bao bì ${productNumber(id)} · ${p.name}`; dialog.showModal(); }
+function zoom(id) { const p = find(id); if (!p) return; document.querySelector('#zoomImage').src = p.image; document.querySelector('#zoomImage').alt = packageLabel(id); document.querySelector('#zoomCaption').textContent = packageLabel(id); dialog.showModal(); }
 document.querySelector('#closeZoom').onclick = () => dialog.close(); dialog.onclick = e => { if (e.target === dialog) dialog.close(); };
 function renderQuestions() {
   const group = groups[questionIndex];
@@ -136,7 +138,7 @@ function renderQuestions() {
   app.innerHTML = hero(`Vì sao bạn xếp các bao bì này vào nhóm ${group.name}?`, 'Chạm vào ảnh để phóng to trước khi viết đánh giá của bạn.', `02 / LÝ DO & CẢM NHẬN · ${questionIndex + 1}/3`, 2)
     + `<nav class="question-tabs" aria-label="Các nhóm đánh giá">${groups.map((g, i) => `<button type="button" class="question-tab ${i === questionIndex ? 'active' : ''}" data-question="${i}" ${i === questionIndex ? 'aria-current="step"' : ''}>2.${i + 1} ${g.name}</button>`).join('')}</nav>`
     + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
-    + `<section class="question-stage"><p class="question-intro">3 bao bì bạn đã xếp vào ${group.name}</p><div class="question-products">${selected[group.id].map(id => { const p = find(id); return p ? `<div class="question-product"><button type="button" data-zoom="${id}" aria-label="Phóng to bao bì ${productNumber(id)}: ${esc(p.name)}"><span class="product-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><span class="product-magnify" aria-hidden="true">⌕</span></button><strong>${esc(p.name)}</strong></div>` : ''; }).join('')}</div><label for="questionAnswer">Đánh giá của bạn cho nhóm ${group.name}</label><textarea id="questionAnswer" maxlength="3000" placeholder="Viết lý do bạn xếp các bao bì này vào nhóm ${group.name}...">${esc(answers[key])}</textarea></section>`
+    + `<section class="question-stage"><p class="question-intro">3 bao bì bạn đã xếp vào ${group.name}</p><div class="question-products">${selected[group.id].map(id => { const p = find(id); return p ? `<div class="question-product"><button type="button" data-zoom="${id}" aria-label="Phóng to ${packageLabel(id)}"><span class="product-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${packageLabel(id)}"><span class="product-magnify" aria-hidden="true">⌕</span></button></div>` : ''; }).join('')}</div><label for="questionAnswer">Đánh giá của bạn cho nhóm ${group.name}</label><textarea id="questionAnswer" maxlength="3000" placeholder="Viết lý do bạn xếp các bao bì này vào nhóm ${group.name}...">${esc(answers[key])}</textarea></section>`
     + `<div class="actions question-actions"><button id="back" class="button secondary">← Quay lại chọn nhóm</button><button id="nextQuestion" class="button" ${nextUnanswered === -1 && !canContinue() ? 'disabled' : ''}>${nextUnanswered === -1 ? 'Tiếp tục →' : `Tiếp: ${groups[nextUnanswered].name} →`}</button></div>`;
   app.querySelectorAll('[data-zoom]').forEach(b => b.onclick = () => zoom(b.dataset.zoom));
   app.querySelector('#questionAnswer').oninput = e => { answers[key] = e.target.value; persist(); };
@@ -312,9 +314,8 @@ async function loadAdmin(slug) {
   adminSurveys = (await adminFetch('/api/admin/surveys')).surveys;
   adminSlug = adminSurveys.some(s => s.slug === slug) ? slug : adminSurveys[0].slug;
   sessionStorage.setItem('adminSurvey', adminSlug);
-  const r = await fetch(surveyUrl(adminSlug));
-  if (!r.ok) throw new Error('Không thể tải thư viện ảnh của khảo sát.');
-  adminSurvey = await r.json();
+  // The admin library comes with brand names; the public survey API leaves them out.
+  adminSurvey = await adminFetch(`/api/admin/library?s=${encodeURIComponent(adminSlug)}`);
 }
 function renderClosed() {
   const title = survey.open === false ? 'Khảo sát này đã đóng' : 'Khảo sát chưa mở';
