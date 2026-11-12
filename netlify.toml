@@ -1,0 +1,13 @@
+# Netlify serves the pages from public/ and runs netlify/functions/api.mjs for /api/* and /images/*.
+# The Vercel deployment keeps using server.js directly.
+[build]
+  publish = "public"
+
+[functions]
+  directory = "netlify/functions"
+
+# Survey links (/s/<slug>) open the same page; the frontend reads the slug from the URL.
+[[redirects]]
+  from = "/s/*"
+  to = "/index.html"
+  status = 200
