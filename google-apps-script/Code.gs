@@ -10,6 +10,9 @@ const HEADERS = [
   'upper_mainstream_ids', 'upper_mainstream_names', 'why_economy', 'why_mainstream',
   'why_upper_mainstream', 'upper_mainstream_signals', 'full_name', 'phone', 'survey'
 ];
+// Phần 2.4 (chỉ có khi quản trị viên bật): tên 2 nhóm so sánh, rồi câu hỏi + trả lời cho tối đa 5 câu.
+const EXTRA_HEADERS = ['extra_group_a', 'extra_group_b'];
+for (let i = 1; i <= 5; i++) EXTRA_HEADERS.push('extra_q' + i, 'extra_a' + i);
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -36,6 +39,12 @@ function doPost(e) {
     // A leading apostrophe stores the phone as text, so Sheets keeps the leading 0 (0900... not 900...).
     const text = value => { const s = safe(value); return s && !s.startsWith("'") ? "'" + s : s; };
     const join = values => (Array.isArray(values) ? values : []).map(safe).join(' | ');
+    const extra = [];
+    if (data.extra) {
+      if (sheet.getRange(1, HEADERS.length + 1).getValue() !== EXTRA_HEADERS[0]) sheet.getRange(1, HEADERS.length + 1, 1, EXTRA_HEADERS.length).setValues([EXTRA_HEADERS]);
+      extra.push(safe(data.extra.groupA), safe(data.extra.groupB));
+      (Array.isArray(data.extra.items) ? data.extra.items : []).slice(0, 5).forEach(item => extra.push(safe(item.question), safe(item.answer)));
+    }
     sheet.appendRow([
       data.submissionId, data.submittedAt, data.surveyVersion,
       join(data.selections.budget), join(data.selectionNames.budget),
@@ -45,7 +54,7 @@ function doPost(e) {
       safe(data.answers.premium), safe(data.answers.premiumSignals),
       safe(data.respondent.name), text(data.respondent.phone),
       safe(data.surveyName || data.survey)
-    ]);
+    ].concat(extra));
     return out({ ok: true });
   } catch (error) { return out({ ok: false, error: String(error) }); }
   finally { lock.releaseLock(); }

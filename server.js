@@ -5,6 +5,7 @@ import { extname, join, resolve } from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { initStorage, loadRegistry, saveRegistry, loadSurvey, saveSurvey, removeSurveyConfig, saveImage, readImage, removeImage, StorageConflictError, dataDir, blobMode, defaultSlug, isPreview } from './storage.js';
+import { emptyExtra, cleanExtraSettings, publicExtra, extraRecord, ExtraChangedError, maxExtraImages } from './extra.js';
 
 const root = resolve(import.meta.dirname);
 const staticFiles = {
@@ -99,7 +100,19 @@ function validateSubmission(input, survey) {
   const phone = respondent.phone.trim();
   if (phone && (!/^[+()\d .-]{6,30}$/.test(phone) || (phone.match(/\d/g) || []).length < 7 || (phone.match(/\d/g) || []).length > 15)) throw new Error('SĐT chưa đúng định dạng. Bạn có thể sửa hoặc để trống.');
   const selectionNames = Object.fromEntries(groups.map(group => [group, selected[group].map(id => survey.products.find(p => p.id === id).name)]));
-  return { submissionId: input.submissionId, submittedAt: new Date().toISOString(), surveyVersion: input.surveyVersion, selections: selected, selectionNames, answers: { ...Object.fromEntries(groups.map(key => [key, cleanSheet(answers[key])])), premiumSignals: '' }, respondent: { name: cleanSheet(respondent.name), phone: cleanSheet(phone) } };
+  const extra = extraRecord(publicExtra(survey), input.extraAnswers, cleanSheet);
+  return { submissionId: input.submissionId, submittedAt: new Date().toISOString(), surveyVersion: input.surveyVersion, selections: selected, selectionNames, answers: { ...Object.fromEntries(groups.map(key => [key, cleanSheet(answers[key])])), premiumSignals: '' }, respondent: { name: cleanSheet(respondent.name), phone: cleanSheet(phone) }, extra };
+}
+// A PNG, JPEG or WebP data URL from the admin page, at most 3 MB, checked by its first bytes.
+function decodeImage(dataUrl) {
+  const match = typeof dataUrl === 'string' && dataUrl.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) throw new Error('Chỉ nhận ảnh PNG, JPEG hoặc WebP.');
+  const bytes = Buffer.from(match[2], 'base64');
+  if (bytes.length > 3_000_000) throw new Error('Ảnh tối đa 3 MB.');
+  const kind = match[1];
+  const valid = kind === 'png' ? bytes.subarray(0, 4).equals(Buffer.from([137,80,78,71])) : kind === 'jpeg' ? bytes.subarray(0, 3).equals(Buffer.from([255,216,255])) : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (!valid) throw new Error('Nội dung ảnh không hợp lệ.');
+  return { bytes, ext: kind === 'jpeg' ? 'jpg' : kind };
 }
 async function alreadySubmitted(id) { if (blobMode || !existsSync(responseFile)) return false; return (await readFile(responseFile, 'utf8')).split('\n').some(line => line.includes(`"submissionId":"${id}"`)); }
 // Named tabs send the secret as "auth": an Apps Script that predates multi-survey support rejects
@@ -131,15 +144,57 @@ export async function handler(req, res) {
     // names up by ID when writing to Google Sheets; admins read them from /api/admin/library.
     if (req.method === 'GET' && path === '/api/survey') {
       const slug = requestedSlug(url.searchParams.get('s')), meta = await surveyMeta(slug), { data } = await loadSurvey(slug);
-      return json(res, 200, { ...data, products: data.products.map(({ id, image }) => ({ id, image })), slug, name: meta.name, open: meta.open, acceptingResponses: accepting(meta, data) });
+      const { extra, ...rest } = data;
+      return json(res, 200, { ...rest, products: data.products.map(({ id, image }) => ({ id, image })), extra: publicExtra(data), slug, name: meta.name, open: meta.open, acceptingResponses: accepting(meta, data) });
     }
     if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: sheetReady, adminConfigured: Boolean(adminToken), preview: isPreview });
-    if (path === '/api/admin/library' || path === '/api/admin/surveys' || path.startsWith('/api/admin/surveys/') || path.startsWith('/api/admin/products')) {
+    if (path === '/api/admin/library' || path === '/api/admin/surveys' || path.startsWith('/api/admin/surveys/') || path.startsWith('/api/admin/products') || path.startsWith('/api/admin/extra')) {
       if (!auth(req)) return json(res, 401, { error: 'Mã quản trị không đúng hoặc chưa được cấu hình.' });
     }
     if (req.method === 'GET' && path === '/api/admin/library') {
       const slug = requestedSlug(url.searchParams.get('s')), meta = await surveyMeta(slug), { data } = await loadSurvey(slug);
-      return json(res, 200, { ...data, slug, name: meta.name, open: meta.open, acceptingResponses: accepting(meta, data) });
+      return json(res, 200, { ...data, extra: data.extra ?? emptyExtra(), slug, name: meta.name, open: meta.open, acceptingResponses: accepting(meta, data) });
+    }
+    // Part 2.4: settings are saved in the survey's config (no extra file); its images (at most 5)
+    // are stored like package images and removed when no longer needed.
+    if (req.method === 'PUT' && path === '/api/admin/extra') {
+      const slug = requestedSlug(url.searchParams.get('s')); await surveyMeta(slug);
+      const input = await body(req, 20_000);
+      const { survey } = await updateSurvey(slug, data => {
+        const images = data.extra?.images ?? [];
+        data.extra = { ...cleanExtraSettings(input, images), images };
+      });
+      return json(res, 200, survey);
+    }
+    if (req.method === 'POST' && path === '/api/admin/extra/images') {
+      const slug = requestedSlug(url.searchParams.get('s')); await surveyMeta(slug);
+      const { bytes, ext } = decodeImage((await body(req))?.image);
+      const full = data => (data.extra?.images?.length ?? 0) >= maxExtraImages;
+      const firstLoad = await loadSurvey(slug);
+      if (full(firstLoad.data)) throw httpError(409, `Phần 2.4 tối đa ${maxExtraImages} ảnh. Hãy xóa ảnh cũ trước khi tải thêm.`);
+      const id = randomUUID(), image = await saveImage(id, ext, bytes);
+      try {
+        const { survey } = await updateSurvey(slug, data => {
+          if (full(data)) throw httpError(409, `Phần 2.4 tối đa ${maxExtraImages} ảnh. Hãy xóa ảnh cũ trước khi tải thêm.`);
+          data.extra ??= emptyExtra();
+          data.extra.images.push({ id, image });
+        }, firstLoad);
+        return json(res, 201, survey);
+      } catch (error) { await removeImage(image).catch(() => {}); throw error; }
+    }
+    if (req.method === 'DELETE' && path.startsWith('/api/admin/extra/images/')) {
+      const slug = requestedSlug(url.searchParams.get('s')); await surveyMeta(slug);
+      const id = path.split('/').at(-1);
+      const { survey, result: removed } = await updateSurvey(slug, data => {
+        const removed = data.extra?.images?.find(image => image.id === id);
+        if (!removed) throw httpError(404, 'Không tìm thấy ảnh.');
+        data.extra.images = data.extra.images.filter(image => image.id !== id);
+        // A group left without its image would show respondents a broken comparison, so 2.4 turns off.
+        for (const group of [data.extra.groupA, data.extra.groupB]) if (group.imageId === id) { group.imageId = ''; data.extra.enabled = false; }
+        return removed;
+      });
+      await removeImage(removed.image).catch(error => console.error('Ảnh không thể xóa khỏi kho:', error));
+      return json(res, 200, survey);
     }
     if (req.method === 'GET' && path === '/api/admin/surveys') return json(res, 200, { surveys: await adminSurveyList() });
     if (req.method === 'POST' && path === '/api/admin/surveys') {
@@ -170,7 +225,7 @@ export async function handler(req, res) {
         data.surveys = data.surveys.filter(s => s.slug !== slug);
       });
       const { data: survey } = await loadSurvey(slug);
-      await Promise.all(survey.products.map(p => removeImage(p.image).catch(error => console.error('Ảnh không thể xóa khỏi kho:', error))));
+      await Promise.all([...survey.products, ...(survey.extra?.images ?? [])].map(p => removeImage(p.image).catch(error => console.error('Ảnh không thể xóa khỏi kho:', error))));
       await removeSurveyConfig(slug).catch(error => console.error('Không thể xóa cấu hình khảo sát:', error));
       return json(res, 200, { surveys: await adminSurveyList() });
     }
@@ -188,14 +243,8 @@ export async function handler(req, res) {
       const slug = requestedSlug(url.searchParams.get('s')); await surveyMeta(slug);
       const input = await body(req);
       if (typeof input.name !== 'string' || !input.name.trim() || input.name.length > 100 || typeof input.image !== 'string') throw new Error('Tên hoặc ảnh không hợp lệ.');
-      const match = input.image.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/);
-      if (!match) throw new Error('Chỉ nhận ảnh PNG, JPEG hoặc WebP.');
-      const bytes = Buffer.from(match[2], 'base64');
-      if (bytes.length > 3_000_000) throw new Error('Ảnh tối đa 3 MB.');
-      const kind = match[1];
-      const valid = kind === 'png' ? bytes.subarray(0, 4).equals(Buffer.from([137,80,78,71])) : kind === 'jpeg' ? bytes.subarray(0, 3).equals(Buffer.from([255,216,255])) : bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
-      if (!valid) throw new Error('Nội dung ảnh không hợp lệ.');
-      const id = randomUUID(), ext = kind === 'jpeg' ? 'jpg' : kind;
+      const { bytes, ext } = decodeImage(input.image);
+      const id = randomUUID();
       const firstLoad = await loadSurvey(slug);
       if (firstLoad.data.products.length >= maxProducts) throw httpError(409, 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.');
       const image = await saveImage(id, ext, bytes);
@@ -239,7 +288,10 @@ export async function handler(req, res) {
       if (input?.surveyVersion !== survey.version && groups.some(group => input?.selections?.[group]?.some(id => !survey.products.some(p => p.id === id)))) return json(res, 409, { code: 'SURVEY_CHANGED', error: 'Một bao bì đã chọn không còn trong khảo sát. Vui lòng chọn lại.' });
       if (!meta.open) return json(res, 409, { code: 'SURVEY_CLOSED', error: 'Khảo sát này đã đóng, không nhận thêm phản hồi.' });
       if (!sheetReady) return json(res, 503, { error: 'Khảo sát chưa sẵn sàng nhận phản hồi.' });
-      const record = { survey: slug, surveyName: meta.name, sheetTab: sheetTabFor(meta), ...validateSubmission(input, survey) };
+      let checked;
+      try { checked = validateSubmission(input, survey); }
+      catch (error) { if (error instanceof ExtraChangedError) return json(res, 409, { code: 'EXTRA_CHANGED', error: error.message }); throw error; }
+      const record = { survey: slug, surveyName: meta.name, sheetTab: sheetTabFor(meta), ...checked };
       if (await alreadySubmitted(record.submissionId)) return json(res, 200, { ok: true, duplicate: true });
       if (pendingSubmissions.has(record.submissionId)) return json(res, 409, { error: 'Phản hồi đang được gửi. Vui lòng chờ.' });
       pendingSubmissions.add(record.submissionId);

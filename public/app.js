@@ -11,6 +11,8 @@ const groupLabel = g => `${g.name} (${g.vi})`;
 let survey = { version: 0, products: [] };
 let selected = { budget: [], mainstream: [], premium: [] };
 let answers = { budget: '', mainstream: '', premium: '' };
+// Part 2.4 answers by question ID: 'A' / 'B' for a choice, text, or { A, B } segment IDs.
+let extraAnswers = {};
 let respondent = { name: '', phone: '' };
 let submissionId = crypto.randomUUID();
 let step = 'sort';
@@ -32,13 +34,32 @@ const maxUploadBatch = 3;
 // "Tempo_Premium-01.png" -> "Tempo Premium 01"
 const nameFromFile = file => file.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
 let isPreviewEnv = false, adminLoaded = false, adminSurveys = [], adminSurvey = { products: [] }, adminSlug = '';
+// Unsaved 2.4 settings on the admin page, kept while images are uploaded or removed.
+let extraDraft = null;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const find = id => survey.products.find(p => p.id === id);
 const productNumber = id => String(survey.products.findIndex(p => p.id === id) + 1).padStart(2, '0');
 // Respondents see packages by number only; brand names stay in the admin area.
 const packageLabel = id => `Bao bì ${productNumber(id)}`;
 const total = () => groups.reduce((n, g) => n + selected[g.id].length, 0);
-function persist() { sessionStorage.setItem(draftKey(), JSON.stringify({ version: survey.version, selected, answers, respondent, submissionId, step, questionIndex })); }
+// Steps 2.1–2.3 are the three groups; 2.4 (index 3) exists only when the admin switched it on.
+const extraQuestions = () => survey.extra?.questions ?? [];
+const stepCount = () => survey.extra ? 4 : 3;
+const extraAnswered = q => { const a = extraAnswers[q.id]; return q.type === 'choice' ? a === 'A' || a === 'B' : q.type === 'segment' ? Boolean(groups.some(g => g.id === a?.A) && groups.some(g => g.id === a?.B)) : typeof a === 'string' && a.trim().length >= 10; };
+const stepDone = i => i < 3 ? answers[groups[i].id].trim().length >= 10 : extraQuestions().every(extraAnswered);
+const stepName = i => i < 3 ? groups[i].name : 'Phần 2.4';
+// Keeps only answers that fit the current 2.4 questions.
+function keepExtraAnswers(saved) {
+  const kept = {};
+  for (const q of extraQuestions()) {
+    const a = saved?.[q.id];
+    if (q.type === 'choice' && (a === 'A' || a === 'B')) kept[q.id] = a;
+    else if (q.type === 'text' && typeof a === 'string') kept[q.id] = a.slice(0, 3000);
+    else if (q.type === 'segment' && a && typeof a === 'object') kept[q.id] = { A: groups.some(g => g.id === a.A) ? a.A : '', B: groups.some(g => g.id === a.B) ? a.B : '' };
+  }
+  return kept;
+}
+function persist() { sessionStorage.setItem(draftKey(), JSON.stringify({ version: survey.version, selected, answers, extraAnswers, respondent, submissionId, step, questionIndex })); }
 function restore() {
   try {
     const d = JSON.parse(sessionStorage.getItem(draftKey()));
@@ -57,7 +78,8 @@ function restore() {
     respondent.phone = typeof d.respondent?.phone === 'string' ? d.respondent.phone.slice(0, 30) : '';
     submissionId = /^[a-f0-9-]{36}$/i.test(d.submissionId || '') ? d.submissionId : crypto.randomUUID();
     step = ['questions', 'details'].includes(d.step) && groups.every(g => selected[g.id].length === 3) ? d.step : 'sort';
-    questionIndex = Number.isInteger(d.questionIndex) && d.questionIndex >= 0 && d.questionIndex < groups.length ? d.questionIndex : 0;
+    extraAnswers = keepExtraAnswers(d.extraAnswers);
+    questionIndex = Number.isInteger(d.questionIndex) && d.questionIndex >= 0 && d.questionIndex < stepCount() ? d.questionIndex : 0;
   } catch { sessionStorage.removeItem(draftKey()); }
 }
 function hero(title, subtitle, eyebrow, number) { return `<section class="hero"><div><p class="eyebrow">${eyebrow}</p><h1>${title}</h1><p class="sub">${subtitle}</p></div><span class="step">BƯỚC ${number} / 3</span></section>`; }
@@ -130,22 +152,61 @@ function openSwap(id, group) {
 }
 assignDialog.querySelector('#closeAssign').onclick = () => assignDialog.close();
 assignDialog.onclick = e => { if (e.target === assignDialog) assignDialog.close(); };
-function zoom(id) { const p = find(id); if (!p) return; document.querySelector('#zoomImage').src = p.image; document.querySelector('#zoomImage').alt = packageLabel(id); document.querySelector('#zoomCaption').textContent = packageLabel(id); dialog.showModal(); }
+function showZoom(src, caption) { document.querySelector('#zoomImage').src = src; document.querySelector('#zoomImage').alt = caption; document.querySelector('#zoomCaption').textContent = caption; dialog.showModal(); }
+function zoom(id) { const p = find(id); if (p) showZoom(p.image, packageLabel(id)); }
 document.querySelector('#closeZoom').onclick = () => dialog.close(); dialog.onclick = e => { if (e.target === dialog) dialog.close(); };
-function renderQuestions() {
-  const group = groups[questionIndex];
-  const key = group.id;
-  const nextUnanswered = groups.findIndex((g, i) => i !== questionIndex && answers[g.id].trim().length < 10);
-  app.innerHTML = hero(`Vì sao bạn xếp các bao bì này vào nhóm ${groupLabel(group)}?`, 'Chạm vào ảnh để phóng to trước khi viết đánh giá của bạn.', `02 / LÝ DO & CẢM NHẬN · ${questionIndex + 1}/3`, 2)
-    + `<nav class="question-tabs" aria-label="Các nhóm đánh giá">${groups.map((g, i) => `<button type="button" class="question-tab ${i === questionIndex ? 'active' : ''}" data-question="${i}" ${i === questionIndex ? 'aria-current="step"' : ''}>2.${i + 1} ${g.name}<small>${g.vi}</small></button>`).join('')}</nav>`
-    + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
-    + `<section class="question-stage"><p class="question-intro">3 bao bì bạn đã xếp vào ${groupLabel(group)}</p><div class="question-products">${selected[group.id].map(id => { const p = find(id); return p ? `<div class="question-product"><button type="button" data-zoom="${id}" aria-label="Phóng to ${packageLabel(id)}"><span class="product-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${packageLabel(id)}"><span class="product-magnify" aria-hidden="true">⌕</span></button></div>` : ''; }).join('')}</div><label for="questionAnswer">Đánh giá của bạn cho nhóm ${groupLabel(group)}</label><textarea id="questionAnswer" maxlength="3000" placeholder="Viết lý do bạn xếp các bao bì này vào nhóm ${groupLabel(group)}...">${esc(answers[key])}</textarea></section>`
-    + `<div class="actions question-actions"><button id="back" class="button secondary">← Quay lại chọn nhóm</button><button id="nextQuestion" class="button" ${nextUnanswered === -1 && !canContinue() ? 'disabled' : ''}>${nextUnanswered === -1 ? 'Tiếp tục →' : `Tiếp: ${groups[nextUnanswered].name} →`}</button></div>`;
-  app.querySelectorAll('[data-zoom]').forEach(b => b.onclick = () => zoom(b.dataset.zoom));
-  app.querySelector('#questionAnswer').oninput = e => { answers[key] = e.target.value; persist(); };
+const nextUnansweredStep = () => [...Array(stepCount()).keys()].find(i => i !== questionIndex && !stepDone(i)) ?? -1;
+function questionTabs() {
+  const tabs = groups.map((g, i) => [`2.${i + 1} ${g.name}`, g.vi]);
+  if (survey.extra) tabs.push(['2.4 So sánh', '2 nhóm bao bì']);
+  return `<nav class="question-tabs" aria-label="Các nhóm đánh giá">${tabs.map(([title, sub], i) => `<button type="button" class="question-tab ${i === questionIndex ? 'active' : ''}" data-question="${i}" ${i === questionIndex ? 'aria-current="step"' : ''}>${title}<small>${sub}</small></button>`).join('')}</nav>`;
+}
+function bindQuestionNav() {
   app.querySelectorAll('[data-question]').forEach(b => b.onclick = () => { questionIndex = Number(b.dataset.question); error = ''; persist(); render(); window.scrollTo(0, 0); });
   app.querySelector('#back').onclick = () => { error = ''; step = 'sort'; persist(); render(); window.scrollTo(0, 0); };
+}
+function renderQuestions() {
+  if (questionIndex === 3 && survey.extra) return renderExtra();
+  const group = groups[questionIndex];
+  const key = group.id;
+  const nextUnanswered = nextUnansweredStep();
+  app.innerHTML = hero(`Vì sao bạn xếp các bao bì này vào nhóm ${groupLabel(group)}?`, 'Chạm vào ảnh để phóng to trước khi viết đánh giá của bạn.', `02 / LÝ DO & CẢM NHẬN · ${questionIndex + 1}/${stepCount()}`, 2)
+    + questionTabs()
+    + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
+    + `<section class="question-stage"><p class="question-intro">3 bao bì bạn đã xếp vào ${groupLabel(group)}</p><div class="question-products">${selected[group.id].map(id => { const p = find(id); return p ? `<div class="question-product"><button type="button" data-zoom="${id}" aria-label="Phóng to ${packageLabel(id)}"><span class="product-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${packageLabel(id)}"><span class="product-magnify" aria-hidden="true">⌕</span></button></div>` : ''; }).join('')}</div><label for="questionAnswer">Đánh giá của bạn cho nhóm ${groupLabel(group)}</label><textarea id="questionAnswer" maxlength="3000" placeholder="Viết lý do bạn xếp các bao bì này vào nhóm ${groupLabel(group)}...">${esc(answers[key])}</textarea></section>`
+    + `<div class="actions question-actions"><button id="back" class="button secondary">← Quay lại chọn nhóm</button><button id="nextQuestion" class="button" ${nextUnanswered === -1 && !canContinue() ? 'disabled' : ''}>${nextUnanswered === -1 ? 'Tiếp tục →' : `Tiếp: ${stepName(nextUnanswered)} →`}</button></div>`;
+  app.querySelectorAll('[data-zoom]').forEach(b => b.onclick = () => zoom(b.dataset.zoom));
+  app.querySelector('#questionAnswer').oninput = e => { answers[key] = e.target.value; persist(); };
+  bindQuestionNav();
   app.querySelector('#nextQuestion').onclick = () => { if (answers[key].trim().length < 10) { error = 'Vui lòng viết ít nhất 10 ký tự trước khi tiếp tục.'; renderQuestions(); app.querySelector('#questionAnswer').focus(); return; } error = ''; if (nextUnanswered === -1) step = 'details'; else questionIndex = nextUnanswered; persist(); render(); window.scrollTo(0, 0); };
+}
+// Part 2.4: the two comparison packages side by side, then the admin's questions.
+function renderExtra() {
+  const extra = survey.extra, nextUnanswered = nextUnansweredStep();
+  const side = s => s === 'A' ? extra.groupA : extra.groupB;
+  const sideLabel = s => `Nhóm ${s} · ${side(s).name}`;
+  const radio = (name, value, checked, label) => `<label class="choice"><input type="radio" name="${name}" value="${value}" ${checked ? 'checked' : ''}><span>${label}</span></label>`;
+  const question = (q, i) => {
+    const a = extraAnswers[q.id], title = `${i + 1}. ${esc(q.text)}`;
+    if (q.type === 'text') return `<div class="extra-question"><label for="extra-${q.id}">${title}</label><textarea id="extra-${q.id}" data-extra-text="${q.id}" maxlength="3000" placeholder="Viết câu trả lời của bạn (ít nhất 10 ký tự)...">${esc(a ?? '')}</textarea></div>`;
+    if (q.type === 'choice') return `<fieldset class="extra-question"><legend>${title}</legend><div class="choice-row">${['A', 'B'].map(s => radio(`extra-${q.id}`, s, a === s, esc(sideLabel(s)))).join('')}</div></fieldset>`;
+    return `<fieldset class="extra-question"><legend>${title}</legend>${['A', 'B'].map(s => `<div class="segment-pick"><strong>${esc(sideLabel(s))}</strong><div class="choice-row">${groups.map(g => radio(`extra-${q.id}-${s}`, g.id, a?.[s] === g.id, `${g.name}<small>${g.vi}</small>`)).join('')}</div></div>`).join('')}</fieldset>`;
+  };
+  app.innerHTML = hero('So sánh 2 nhóm bao bì', esc(extra.intro || 'Bạn cảm nhận 2 nhóm bao bì dưới đây thế nào?'), `02 / LÝ DO & CẢM NHẬN · 4/${stepCount()}`, 2)
+    + questionTabs()
+    + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
+    + `<section class="question-stage"><div class="question-products extra-products">${['A', 'B'].map(s => `<div class="question-product"><button type="button" data-extra-zoom="${s}" aria-label="Phóng to ${esc(sideLabel(s))}"><span class="product-badge">Nhóm ${s}</span><img src="${esc(side(s).image)}" alt="${esc(sideLabel(s))}"><span class="product-magnify" aria-hidden="true">⌕</span></button><strong>${esc(side(s).name)}</strong></div>`).join('')}</div>${extra.questions.map(question).join('')}</section>`
+    + `<div class="actions question-actions"><button id="back" class="button secondary">← Quay lại chọn nhóm</button><button id="nextQuestion" class="button" ${nextUnanswered === -1 && !canContinue() ? 'disabled' : ''}>${nextUnanswered === -1 ? 'Tiếp tục →' : `Tiếp: ${stepName(nextUnanswered)} →`}</button></div>`;
+  app.querySelectorAll('[data-extra-zoom]').forEach(b => b.onclick = () => showZoom(side(b.dataset.extraZoom).image, sideLabel(b.dataset.extraZoom)));
+  app.querySelectorAll('[data-extra-text]').forEach(t => t.oninput = () => { extraAnswers[t.dataset.extraText] = t.value; persist(); });
+  app.querySelectorAll('input[type=radio]').forEach(input => input.onchange = () => {
+    const [, id, s] = input.name.match(/^extra-([a-f0-9-]{36})(?:-([AB]))?$/i) || [];
+    if (!id) return;
+    if (s) extraAnswers[id] = { ...(extraAnswers[id] || {}), [s]: input.value }; else extraAnswers[id] = input.value;
+    persist();
+  });
+  bindQuestionNav();
+  app.querySelector('#nextQuestion').onclick = () => { if (!stepDone(3)) { error = 'Vui lòng trả lời đủ các câu hỏi ở phần 2.4 (câu trả lời viết cần ít nhất 10 ký tự).'; renderExtra(); return; } error = ''; if (nextUnanswered === -1) step = 'details'; else questionIndex = nextUnanswered; persist(); render(); window.scrollTo(0, 0); };
 }
 function renderDetails() {
   app.innerHTML = hero('Thông tin của bạn', 'Chỉ còn một bước nữa. Cảm ơn bạn đã dành thời gian chia sẻ cảm nhận về bao bì.', '03 / HOÀN TẤT KHẢO SÁT', 3)
@@ -156,13 +217,13 @@ function renderDetails() {
   app.querySelector('#submit').onclick = submit;
 }
 async function submit() {
-  const missing = groups.findIndex(g => answers[g.id].trim().length < 10);
-  if (missing !== -1) { step = 'questions'; questionIndex = missing; error = 'Vui lòng trả lời đủ 3 câu hỏi, mỗi câu ít nhất 10 ký tự.'; persist(); render(); return; }
+  const missing = [...Array(stepCount()).keys()].find(i => !stepDone(i)) ?? -1;
+  if (missing !== -1) { step = 'questions'; questionIndex = missing; error = missing === 3 ? 'Vui lòng trả lời đủ các câu hỏi ở phần 2.4.' : 'Vui lòng trả lời đủ 3 câu hỏi, mỗi câu ít nhất 10 ký tự.'; persist(); render(); return; }
   if (respondent.name.trim().length < 2) { error = 'Vui lòng nhập Họ và Tên (ít nhất 2 ký tự).'; renderDetails(); app.querySelector('#respondentName').focus(); return; }
   const phone = respondent.phone.trim();
   if (phone && (!/^[+()\d .-]{6,30}$/.test(phone) || (phone.match(/\d/g) || []).length < 7 || (phone.match(/\d/g) || []).length > 15)) { error = 'SĐT chưa đúng định dạng. Bạn có thể sửa hoặc để trống.'; renderDetails(); app.querySelector('#respondentPhone').focus(); return; }
   const button = app.querySelector('#submit'); button.disabled = true; button.textContent = 'Đang gửi…'; error = '';
-  try { const response = await fetch('/api/responses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ survey: survey.slug, submissionId, surveyVersion: survey.version, selections: selected, answers, respondent }) }); const result = await response.json(); if (response.status === 409 && result.code === 'SURVEY_CHANGED') { const latest = await fetch(surveyUrl(survey.slug)); if (latest.ok) { survey = await latest.json(); sheetConfigured = survey.acceptingResponses; groups.forEach(g => selected[g.id] = selected[g.id].filter(id => find(id))); step = 'sort'; questionIndex = 0; error = result.error; persist(); render(); return; } } if (!response.ok || !result.ok) throw new Error(result.error || 'Không thể gửi phản hồi.'); step = 'done'; sessionStorage.removeItem(draftKey()); render(); window.scrollTo(0, 0); }
+  try { const response = await fetch('/api/responses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ survey: survey.slug, submissionId, surveyVersion: survey.version, selections: selected, answers, ...(survey.extra ? { extraAnswers } : {}), respondent }) }); const result = await response.json(); if (response.status === 409 && result.code === 'EXTRA_CHANGED') { const latest = await fetch(surveyUrl(survey.slug)); if (latest.ok) { survey = await latest.json(); sheetConfigured = survey.acceptingResponses; extraAnswers = keepExtraAnswers(extraAnswers); step = 'questions'; questionIndex = survey.extra ? 3 : 0; error = result.error; persist(); render(); window.scrollTo(0, 0); return; } } if (response.status === 409 && result.code === 'SURVEY_CHANGED') { const latest = await fetch(surveyUrl(survey.slug)); if (latest.ok) { survey = await latest.json(); sheetConfigured = survey.acceptingResponses; groups.forEach(g => selected[g.id] = selected[g.id].filter(id => find(id))); step = 'sort'; questionIndex = 0; error = result.error; persist(); render(); return; } } if (!response.ok || !result.ok) throw new Error(result.error || 'Không thể gửi phản hồi.'); step = 'done'; sessionStorage.removeItem(draftKey()); render(); window.scrollTo(0, 0); }
   catch (e) { error = `${e.message} Câu trả lời của bạn vẫn được giữ lại. Hãy thử gửi lại.`; renderDetails(); }
 }
 function eyeIcon(visible) { return `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>${visible ? '' : '<path d="M3 3l18 18"/>'}</svg>`; }
@@ -194,7 +255,7 @@ function renderAdmin() {
     + `<p class="survey-status ${reason ? 'off' : 'on'}"><span class="status-dot" aria-hidden="true"></span>${reason ? `Chưa nhận phản hồi: ${esc(reason)}` : 'Đang nhận phản hồi'}</p>`
     + `<dl class="survey-meta"><div><dt>Link khảo sát</dt><dd><code>${esc(link)}</code></dd></div><div><dt>Ghi vào tab Sheet</dt><dd>${esc(current.sheetTab)}</dd></div></dl>`
     + `<details class="new-survey"><summary>Tạo khảo sát mới</summary><div class="new-survey-row"><input id="newSurveyName" maxlength="60" placeholder="Ví dụ: Khăn giấy ướt" aria-label="Tên khảo sát mới"><button id="createSurvey" class="button" type="button">Tạo khảo sát</button></div></details><p id="surveyMessage" class="sub" role="status"></p></section>`
-    + `<div class="admin-grid"><section class="panel"><h2>Thêm bao bì · ${esc(current.name)}</h2><label class="field">Hình ảnh (PNG, JPG, WebP; tối đa 3 MB/ảnh)<input id="image" type="file" multiple accept="image/png,image/jpeg,image/webp"></label><div id="uploadList" class="upload-list"></div><button id="upload" class="button" disabled>Tải ảnh lên</button><p id="adminMessage" class="sub" style="margin-top:16px"></p></section><section class="panel"><h2>Danh sách ảnh · ${products.length}/30</h2><div class="admin-list">${products.map((p, i) => `<div class="admin-item"><span class="admin-number">${String(i + 1).padStart(2, '0')}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><strong title="${esc(p.name)}">${esc(p.name)}</strong><div class="admin-item-actions"><button type="button" class="admin-rename" data-rename="${p.id}" aria-label="Sửa tên ${esc(p.name)}">Sửa tên</button><button type="button" data-delete="${p.id}" aria-label="Xóa ${esc(p.name)} khỏi khảo sát">Xóa</button></div></div>`).join('')}</div>${products.length ? '' : '<p class="sub">Chưa có ảnh nào. Hãy thêm ít nhất 9 ảnh.</p>'}</section></div><div class="actions"><a href="/s/${current.slug}" class="button secondary" style="text-decoration:none">← Xem khảo sát</a></div>`;
+    + `<div class="admin-grid"><section class="panel"><h2>Thêm bao bì · ${esc(current.name)}</h2><label class="field">Hình ảnh (PNG, JPG, WebP; tối đa 3 MB/ảnh)<input id="image" type="file" multiple accept="image/png,image/jpeg,image/webp"></label><div id="uploadList" class="upload-list"></div><button id="upload" class="button" disabled>Tải ảnh lên</button><p id="adminMessage" class="sub" style="margin-top:16px"></p></section><section class="panel"><h2>Danh sách ảnh · ${products.length}/30</h2><div class="admin-list">${products.map((p, i) => `<div class="admin-item"><span class="admin-number">${String(i + 1).padStart(2, '0')}</span><img src="${esc(p.image)}" alt="${esc(p.name)}"><strong title="${esc(p.name)}">${esc(p.name)}</strong><div class="admin-item-actions"><button type="button" class="admin-rename" data-rename="${p.id}" aria-label="Sửa tên ${esc(p.name)}">Sửa tên</button><button type="button" data-delete="${p.id}" aria-label="Xóa ${esc(p.name)} khỏi khảo sát">Xóa</button></div></div>`).join('')}</div>${products.length ? '' : '<p class="sub">Chưa có ảnh nào. Hãy thêm ít nhất 9 ảnh.</p>'}</section></div><section class="panel extra-panel" id="extraPanel" aria-label="Câu hỏi bổ sung 2.4"></section><div class="actions"><a href="/s/${current.slug}" class="button secondary" style="text-decoration:none">← Xem khảo sát</a></div>`;
   const message = app.querySelector('#adminMessage'), surveyMessage = app.querySelector('#surveyMessage');
   if (products.length >= 30) message.textContent = 'Thư viện đã đạt tối đa 30 ảnh. Hãy xóa ảnh cũ trước khi tải thêm.';
   const refresh = async (slug = adminSlug) => { await loadAdmin(slug); renderAdmin(); };
@@ -235,6 +296,7 @@ function renderAdmin() {
   };
   app.querySelector('#createSurvey').onclick = create;
   nameInput.onkeydown = e => { if (e.key === 'Enter') create(); };
+  renderExtraAdmin(app.querySelector('#extraPanel'), current);
   // Up to maxUploadBatch images per upload. Each gets a name prefilled from its file name that can be edited.
   const fileInput = app.querySelector('#image'), uploadList = app.querySelector('#uploadList');
   let picked = [];
@@ -335,3 +397,89 @@ try {
   }
 } catch { app.innerHTML = '<p class="notice" style="margin-top:35px">Không thể tải khảo sát. Vui lòng thử lại sau.</p>'; }
 
+
+// Shrinks a photo before it is uploaded (longest side 1200 px, WebP or JPEG) so part 2.4 images
+// take little storage and bandwidth. Keeps the original file if that is already smaller.
+async function compressImage(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+  const context = canvas.getContext('2d');
+  const encode = type => new Promise(done => canvas.toBlob(done, type, 0.82));
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  let blob = await encode('image/webp');
+  if (!blob || blob.type !== 'image/webp') {
+    // JPEG has no transparency, so transparent areas become white like the survey background.
+    context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    blob = await encode('image/jpeg');
+  }
+  return blob && blob.size < file.size ? blob : file;
+}
+const readDataUrl = blob => new Promise((ok, fail) => { const reader = new FileReader(); reader.onload = () => ok(reader.result); reader.onerror = fail; reader.readAsDataURL(blob); });
+
+// Admin settings for part 2.4: on/off, intro, up to 5 comparison images (one for group A, one for
+// group B) and up to 5 questions. Edits stay in extraDraft until "Lưu phần 2.4".
+function renderExtraAdmin(panel, current) {
+  const saved = adminSurvey.extra;
+  if (!extraDraft || extraDraft.slug !== current.slug) extraDraft = { slug: current.slug, ...structuredClone(saved) };
+  extraDraft.images = saved.images;
+  const draft = extraDraft, images = draft.images;
+  const typeNames = { choice: 'Chọn 1 nhóm (A hoặc B)', text: 'Trả lời bằng chữ', segment: 'Xếp phân khúc cho 2 nhóm' };
+  const role = id => id === draft.groupA.imageId ? 'A' : id === draft.groupB.imageId ? 'B' : '';
+  panel.innerHTML = `<div class="extra-head"><div><h2>Câu hỏi bổ sung 2.4 · ${esc(current.name)}</h2><p class="sub">Người làm khảo sát so sánh 2 nhóm bao bì (mỗi nhóm 1 ảnh) rồi trả lời các câu hỏi bên dưới. Chỉ bật khi cần.</p></div><label class="extra-switch"><input type="checkbox" id="extraEnabled" ${draft.enabled ? 'checked' : ''}><span>${draft.enabled ? 'Đang bật' : 'Đang tắt'}</span></label></div>`
+    + `<label class="field">Lời dẫn<input id="extraIntro" maxlength="200" value="${esc(draft.intro)}" placeholder="Ví dụ: Bạn cảm nhận 2 nhóm bao bì dưới đây thế nào?"></label>`
+    + `<div class="extra-groups">${['A', 'B'].map(s => `<label class="field">Tên Nhóm ${s}<input data-group-name="${s}" maxlength="40" value="${esc(draft[`group${s}`].name)}"></label>`).join('')}</div>`
+    + `<h3>Ảnh so sánh · ${images.length}/5</h3><p class="sub">Chọn 1 ảnh cho Nhóm A và 1 ảnh cho Nhóm B. Ảnh được tự thu nhỏ (tối đa 1200 px) và nén trước khi tải lên để tiết kiệm dung lượng.</p>`
+    + `<div class="extra-images">${images.map(image => `<div class="extra-image ${role(image.id) ? 'picked' : ''}"><img src="${esc(image.image)}" alt="Ảnh so sánh">${role(image.id) ? `<span class="extra-role">Nhóm ${role(image.id)}</span>` : ''}<div class="extra-image-actions"><button type="button" data-pick="A" data-image="${image.id}" aria-pressed="${role(image.id) === 'A'}">Dùng cho A</button><button type="button" data-pick="B" data-image="${image.id}" aria-pressed="${role(image.id) === 'B'}">Dùng cho B</button><button type="button" class="extra-delete" data-extra-delete="${image.id}">Xóa</button></div></div>`).join('')}${images.length < 5 ? `<label class="extra-add">+ Tải ảnh lên<input id="extraImage" type="file" accept="image/png,image/jpeg,image/webp" hidden></label>` : ''}</div>`
+    + `<h3>Câu hỏi · ${draft.questions.length}/5</h3><div class="extra-questions">${draft.questions.map((q, i) => `<div class="extra-question-row"><span class="extra-number">${i + 1}</span><input data-q-text="${i}" maxlength="200" value="${esc(q.text)}" placeholder="Nội dung câu hỏi" aria-label="Nội dung câu hỏi ${i + 1}"><select data-q-type="${i}" aria-label="Kiểu trả lời câu ${i + 1}">${Object.entries(typeNames).map(([value, label]) => `<option value="${value}" ${q.type === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button type="button" class="upload-remove" data-q-remove="${i}" aria-label="Xóa câu hỏi ${i + 1}" ${draft.questions.length === 1 ? 'disabled' : ''}>×</button></div>`).join('')}</div>`
+    + `<button type="button" id="addQuestion" class="button secondary" ${draft.questions.length >= 5 ? 'disabled' : ''}>+ Thêm câu hỏi</button>`
+    + `<div class="actions"><button type="button" id="saveExtra" class="button">Lưu phần 2.4</button></div><p id="extraMessage" class="sub" role="status"></p>`;
+  const message = panel.querySelector('#extraMessage');
+  const rerender = text => { renderExtraAdmin(panel, current); if (text) panel.querySelector('#extraMessage').textContent = text; };
+  panel.querySelector('#extraEnabled').onchange = e => { draft.enabled = e.target.checked; rerender('Nhấn "Lưu phần 2.4" để áp dụng.'); };
+  panel.querySelector('#extraIntro').oninput = e => { draft.intro = e.target.value; };
+  panel.querySelectorAll('[data-group-name]').forEach(input => input.oninput = () => { draft[`group${input.dataset.groupName}`].name = input.value; });
+  panel.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
+    const other = b.dataset.pick === 'A' ? 'B' : 'A';
+    draft[`group${b.dataset.pick}`].imageId = b.dataset.image;
+    if (draft[`group${other}`].imageId === b.dataset.image) draft[`group${other}`].imageId = '';
+    rerender('Nhấn "Lưu phần 2.4" để áp dụng.');
+  });
+  panel.querySelectorAll('[data-q-text]').forEach(input => input.oninput = () => { draft.questions[input.dataset.qText].text = input.value; });
+  panel.querySelectorAll('[data-q-type]').forEach(select => select.onchange = () => { draft.questions[select.dataset.qType].type = select.value; });
+  panel.querySelectorAll('[data-q-remove]').forEach(b => b.onclick = () => { draft.questions.splice(Number(b.dataset.qRemove), 1); rerender(); });
+  panel.querySelector('#addQuestion').onclick = () => { draft.questions.push({ id: crypto.randomUUID(), text: '', type: 'text' }); rerender(); panel.querySelector(`[data-q-text="${draft.questions.length - 1}"]`).focus(); };
+  const fileInput = panel.querySelector('#extraImage');
+  if (fileInput) fileInput.onchange = async () => {
+    const file = fileInput.files[0]; if (!file) return;
+    message.textContent = 'Đang nén và tải ảnh lên…';
+    try {
+      const blob = await compressImage(file);
+      if (blob.size > 3_000_000) throw new Error('Ảnh tối đa 3 MB.');
+      adminSurvey = await adminFetch(`/api/admin/extra/images?s=${current.slug}`, { method: 'POST', body: JSON.stringify({ image: await readDataUrl(blob) }) });
+      rerender(`Đã tải ảnh lên (${Math.max(1, Math.round(blob.size / 1024))} KB).`);
+    } catch (e) { message.textContent = e.message || 'Không thể tải ảnh lên.'; }
+  };
+  panel.querySelectorAll('[data-extra-delete]').forEach(b => b.onclick = async () => {
+    if (!confirm('Xóa ảnh này khỏi phần 2.4?')) return;
+    b.disabled = true;
+    try {
+      const id = b.dataset.extraDelete;
+      adminSurvey = await adminFetch(`/api/admin/extra/images/${id}?s=${current.slug}`, { method: 'DELETE' });
+      // The server turns 2.4 off if this image was in use; mirror that in the unsaved settings.
+      for (const s of ['A', 'B']) if (draft[`group${s}`].imageId === id) { draft[`group${s}`].imageId = ''; draft.enabled = adminSurvey.extra.enabled; }
+      rerender('Đã xóa ảnh.');
+    } catch (e) { message.textContent = e.message; b.disabled = false; }
+  });
+  panel.querySelector('#saveExtra').onclick = async e => {
+    e.target.disabled = true; message.textContent = 'Đang lưu…';
+    try {
+      const { enabled, intro, groupA, groupB, questions } = draft;
+      adminSurvey = await adminFetch(`/api/admin/extra?s=${current.slug}`, { method: 'PUT', body: JSON.stringify({ enabled, intro, groupA, groupB, questions }) });
+      extraDraft = null;
+      rerender(adminSurvey.extra.enabled ? 'Đã lưu. Phần 2.4 đang hiện cho người làm khảo sát.' : 'Đã lưu. Phần 2.4 đang tắt.');
+    } catch (err) { message.textContent = err.message; e.target.disabled = false; }
+  };
+}
