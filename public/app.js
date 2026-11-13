@@ -428,7 +428,7 @@ function renderExtraAdmin(panel, current) {
   const draft = extraDraft, images = draft.images;
   const typeNames = { choice: 'Chọn 1 nhóm (A hoặc B)', text: 'Trả lời bằng chữ', segment: 'Xếp phân khúc cho 2 nhóm' };
   const role = id => id === draft.groupA.imageId ? 'A' : id === draft.groupB.imageId ? 'B' : '';
-  panel.innerHTML = `<div class="extra-head"><div><h2>Câu hỏi bổ sung 2.4 · ${esc(current.name)}</h2><p class="sub">Người làm khảo sát so sánh 2 nhóm bao bì (mỗi nhóm 1 ảnh) rồi trả lời các câu hỏi bên dưới. Chỉ bật khi cần.</p></div><label class="extra-switch"><input type="checkbox" id="extraEnabled" ${draft.enabled ? 'checked' : ''}><span>${draft.enabled ? 'Đang bật' : 'Đang tắt'}</span></label></div>`
+  panel.innerHTML = `<div class="extra-head"><div><h2>Câu hỏi bổ sung 2.4 · ${esc(current.name)}</h2><p class="sub">Người làm khảo sát so sánh 2 nhóm bao bì (mỗi nhóm 1 ảnh) rồi trả lời các câu hỏi bên dưới. Chỉ bật khi cần.</p></div><button type="button" id="extraEnabled" class="button secondary extra-toggle ${draft.enabled ? 'on' : ''}" aria-pressed="${draft.enabled}" title="Bấm để ${draft.enabled ? 'tắt' : 'bật'} phần 2.4"><span class="toggle-dot" aria-hidden="true"></span>${draft.enabled ? 'Đang bật' : 'Đang tắt'}</button></div>`
     + `<label class="field">Lời dẫn<input id="extraIntro" maxlength="200" value="${esc(draft.intro)}" placeholder="Ví dụ: Bạn cảm nhận 2 nhóm bao bì dưới đây thế nào?"></label>`
     + `<div class="extra-groups">${['A', 'B'].map(s => `<label class="field">Tên Nhóm ${s}<input data-group-name="${s}" maxlength="40" value="${esc(draft[`group${s}`].name)}"></label>`).join('')}</div>`
     + `<h3>Ảnh so sánh · ${images.length}/5</h3><p class="sub">Chọn 1 ảnh cho Nhóm A và 1 ảnh cho Nhóm B. Ảnh được tự thu nhỏ (tối đa 1200 px) và nén trước khi tải lên để tiết kiệm dung lượng.</p>`
@@ -438,7 +438,7 @@ function renderExtraAdmin(panel, current) {
     + `<div class="actions"><button type="button" id="saveExtra" class="button">Lưu phần 2.4</button></div><p id="extraMessage" class="sub" role="status"></p>`;
   const message = panel.querySelector('#extraMessage');
   const rerender = text => { renderExtraAdmin(panel, current); if (text) panel.querySelector('#extraMessage').textContent = text; };
-  panel.querySelector('#extraEnabled').onchange = e => { draft.enabled = e.target.checked; rerender('Nhấn "Lưu phần 2.4" để áp dụng.'); };
+  panel.querySelector('#extraEnabled').onclick = () => { draft.enabled = !draft.enabled; rerender('Nhấn "Lưu phần 2.4" để áp dụng.'); };
   panel.querySelector('#extraIntro').oninput = e => { draft.intro = e.target.value; };
   panel.querySelectorAll('[data-group-name]').forEach(input => input.oninput = () => { draft[`group${input.dataset.groupName}`].name = input.value; });
   panel.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {

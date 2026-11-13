@@ -24,7 +24,7 @@ async function startApp(blobsURL, extraEnv = {}) {
   const port = 41000 + Math.floor(Math.random() * 10000);
   const child = spawn(process.execPath, ['server.js'], { cwd: new URL('..', import.meta.url), env: { ...process.env, VERCEL: '', VERCEL_ENV: '', BLOB_READ_WRITE_TOKEN: '', PORT: String(port), DATA_DIR: dir, ADMIN_TOKEN: 'admin-secret', GOOGLE_SHEETS_WEBHOOK_URL: `http://127.0.0.1:${sheet.address().port}`, GOOGLE_SHEETS_SECRET: 'secret', NETLIFY_SITE_ID: siteID, NETLIFY_BLOBS_TOKEN: token, NETLIFY_BLOBS_API_URL: blobsURL, ...extraEnv }, stdio: 'ignore' });
   const base = `http://127.0.0.1:${port}`;
-  for (let i = 0; i < 200; i++) { try { if ((await fetch(base)).ok) break; } catch {} await new Promise(r => setTimeout(r, 50)); }
+  for (let i = 0; i < 400; i++) { try { if ((await fetch(base)).ok) break; } catch {} await new Promise(r => setTimeout(r, 50)); }
   const api = async (path, method = 'GET', data, auth) => { const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth}` } : {}) }, body: data ? JSON.stringify(data) : undefined }); return { status: r.status, data: await r.json().catch(() => null) }; };
   const stop = async () => { child.kill(); sheet.close(); await rm(dir, { recursive: true, force: true }); };
   return { base, api, payloads, dir, stop };
