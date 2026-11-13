@@ -2,10 +2,12 @@ const app = document.querySelector('#app');
 const dialog = document.querySelector('#zoomDialog');
 const assignDialog = document.querySelector('#assignDialog');
 const groups = [
-  { id: 'budget', name: 'Economy', color: '#e07b24', short: 'Economy' },
-  { id: 'mainstream', name: 'Mainstream', color: '#2e9a5e', short: 'Main' },
-  { id: 'premium', name: 'Upper Mainstream', color: '#2f6fbf', short: 'Upper M.' }
+  { id: 'budget', name: 'Economy', vi: 'Dòng Tiết Kiệm', color: '#e07b24', short: 'Economy' },
+  { id: 'mainstream', name: 'Mainstream', vi: 'Dòng Phổ Thông', color: '#2e9a5e', short: 'Main' },
+  { id: 'premium', name: 'Upper Mainstream', vi: 'Dòng Cao Cấp', color: '#2f6fbf', short: 'Upper M.' }
 ];
+// "Economy (Dòng Tiết Kiệm)": the English segment name with its Vietnamese meaning for respondents.
+const groupLabel = g => `${g.name} (${g.vi})`;
 let survey = { version: 0, products: [] };
 let selected = { budget: [], mainstream: [], premium: [] };
 let answers = { budget: '', mainstream: '', premium: '' };
@@ -65,7 +67,7 @@ function renderSort() {
   app.innerHTML = hero(`Bạn cảm nhận bao bì ${esc(productType())}thuộc phân khúc nào?`, 'Chọn 3 bao bì cho mỗi nhóm. Kéo thả trên máy tính hoặc chạm vào ảnh rồi chọn nhóm trên điện thoại.', '01 / PHÂN LOẠI BAO BÌ', 1)
     + `<div class="toolbar"><div class="progress">Bạn đã chọn <span>${total()} / 9</span> bao bì</div><button id="next" class="button" ${ready && canContinue() ? '' : 'disabled'}>Tiếp tục →</button></div>`
     + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
-    + `<div class="segments">${groups.map(g => `<section class="segment" data-drop="${g.id}" style="--accent:${g.color}"><div class="segment-title"><span class="dot"></span>${g.name}<span class="count">${selected[g.id].length}/3</span></div>${selected[g.id].length ? `<div class="slot-items">${selected[g.id].map(id => { const p = find(id); return p ? `<div class="slot" draggable="true" data-id="${id}" data-group="${g.id}"><button type="button" class="slot-media" data-move="${id}" aria-label="Chuyển nhóm hoặc đổi chỗ ${packageLabel(id)}" title="Kéo sang nhóm khác hoặc chạm để chuyển nhóm"><span class="slot-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${packageLabel(id)}" draggable="false"></button><div class="slot-bar"><span class="slot-name"></span><button type="button" class="slot-zoom" data-zoom="${id}" aria-label="Phóng to ${packageLabel(id)}">⌕</button><button type="button" class="slot-remove" data-remove="${id}" aria-label="Bỏ ${packageLabel(id)}">×</button></div></div>` : ''; }).join('')}</div>` : `<div class="hint">Thả bao bì vào đây</div>`}</section>`).join('')}</div>`
+    + `<div class="segments">${groups.map(g => `<section class="segment" data-drop="${g.id}" style="--accent:${g.color}"><div class="segment-title"><span class="dot"></span><span class="group-name">${g.name}<small>${g.vi}</small></span><span class="count">${selected[g.id].length}/3</span></div>${selected[g.id].length ? `<div class="slot-items">${selected[g.id].map(id => { const p = find(id); return p ? `<div class="slot" draggable="true" data-id="${id}" data-group="${g.id}"><button type="button" class="slot-media" data-move="${id}" aria-label="Chuyển nhóm hoặc đổi chỗ ${packageLabel(id)}" title="Kéo sang nhóm khác hoặc chạm để chuyển nhóm"><span class="slot-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${packageLabel(id)}" draggable="false"></button><div class="slot-bar"><span class="slot-name"></span><button type="button" class="slot-zoom" data-zoom="${id}" aria-label="Phóng to ${packageLabel(id)}">⌕</button><button type="button" class="slot-remove" data-remove="${id}" aria-label="Bỏ ${packageLabel(id)}">×</button></div></div>` : ''; }).join('')}</div>` : `<div class="hint">Thả bao bì vào đây</div>`}</section>`).join('')}</div>`
     + `<section class="pool" data-pool><div class="pool-head"><h2>Bao bì chờ bạn chọn nhóm <span>${remaining.length}</span></h2><small>Nhấn kính lúp để xem ảnh lớn</small></div><div class="cards">${remaining.map(p => `<div class="card" draggable="true" data-id="${p.id}" tabindex="0"><span class="badge">${productNumber(p.id)}</span><img src="${esc(p.image)}" alt="${packageLabel(p.id)}"><button class="zoom" data-zoom="${p.id}" aria-label="Phóng to ${packageLabel(p.id)}">⌕</button></div>`).join('')}</div></section>`;
   app.querySelector('#next').onclick = () => { step = 'questions'; questionIndex = 0; persist(); render(); window.scrollTo(0, 0); };
   app.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => { unselect(b.dataset.remove); persist(); renderSort(); });
@@ -100,7 +102,7 @@ function assign(id, group, targetId) {
     if (from) { const fi = selected[from].indexOf(id); selected[from][fi] = targetId; }
     selected[group][ti] = id;
   } else if (from !== group) {
-    if (selected[group].length >= 3) { error = `Nhóm ${groups.find(g => g.id === group).name} đã đủ 3 bao bì. Hãy thả lên bao bì bạn muốn đổi chỗ.`; renderSort(); return; }
+    if (selected[group].length >= 3) { error = `Nhóm ${groupLabel(groups.find(g => g.id === group))} đã đủ 3 bao bì. Hãy thả lên bao bì bạn muốn đổi chỗ.`; renderSort(); return; }
     unselect(id); selected[group].push(id);
   }
   error = ''; persist(); renderSort();
@@ -112,15 +114,15 @@ function openAssign(id) {
   assignDialog.querySelector('#assignTitle').textContent = from ? 'Chuyển bao bì sang nhóm khác' : 'Chọn nhóm cho bao bì';
   assignDialog.querySelector('#assignCaption').textContent = packageLabel(id);
   options.className = '';
-  options.innerHTML = groups.map(g => g.id === from ? `<button class="button" disabled>${g.name} · nhóm hiện tại</button>` : `<button class="button" data-group="${g.id}">${g.name} · ${selected[g.id].length}/3${selected[g.id].length >= 3 ? ' · đổi chỗ' : ''}</button>`).join('');
+  options.innerHTML = groups.map(g => g.id === from ? `<button class="button" disabled>${groupLabel(g)} · nhóm hiện tại</button>` : `<button class="button" data-group="${g.id}">${groupLabel(g)} · ${selected[g.id].length}/3${selected[g.id].length >= 3 ? ' · đổi chỗ' : ''}</button>`).join('');
   options.querySelectorAll('[data-group]').forEach(b => b.onclick = () => { const group = b.dataset.group; if (selected[group].length < 3) { assignDialog.close(); assign(id, group); } else openSwap(id, group); });
   if (!assignDialog.open) assignDialog.showModal();
 }
 function openSwap(id, group) {
   const p = find(id), g = groups.find(x => x.id === group), from = groupOf(id);
   const options = assignDialog.querySelector('#assignOptions');
-  assignDialog.querySelector('#assignTitle').textContent = `Nhóm ${g.name} đã đủ 3`;
-  assignDialog.querySelector('#assignCaption').textContent = `Chọn bao bì sẽ đổi chỗ với ${packageLabel(id)}. Bao bì đó sẽ ${from ? `chuyển sang nhóm ${groups.find(x => x.id === from).name}` : 'quay về khu vực chờ'}.`;
+  assignDialog.querySelector('#assignTitle').textContent = `Nhóm ${groupLabel(g)} đã đủ 3`;
+  assignDialog.querySelector('#assignCaption').textContent = `Chọn bao bì sẽ đổi chỗ với ${packageLabel(id)}. Bao bì đó sẽ ${from ? `chuyển sang nhóm ${groupLabel(groups.find(x => x.id === from))}` : 'quay về khu vực chờ'}.`;
   options.className = 'swap-options';
   options.innerHTML = selected[group].map(tid => { const t = find(tid); return t ? `<button type="button" class="swap-choice" data-target="${tid}"><span class="slot-badge">${productNumber(tid)}</span><img src="${esc(t.image)}" alt=""><span>${packageLabel(tid)}</span></button>` : ''; }).join('') + `<button type="button" class="button secondary swap-back">← Chọn nhóm khác</button>`;
   options.querySelectorAll('[data-target]').forEach(b => b.onclick = () => { assignDialog.close(); assign(id, group, b.dataset.target); });
@@ -134,10 +136,10 @@ function renderQuestions() {
   const group = groups[questionIndex];
   const key = group.id;
   const nextUnanswered = groups.findIndex((g, i) => i !== questionIndex && answers[g.id].trim().length < 10);
-  app.innerHTML = hero(`Vì sao bạn xếp các bao bì này vào nhóm ${group.name}?`, 'Chạm vào ảnh để phóng to trước khi viết đánh giá của bạn.', `02 / LÝ DO & CẢM NHẬN · ${questionIndex + 1}/3`, 2)
-    + `<nav class="question-tabs" aria-label="Các nhóm đánh giá">${groups.map((g, i) => `<button type="button" class="question-tab ${i === questionIndex ? 'active' : ''}" data-question="${i}" ${i === questionIndex ? 'aria-current="step"' : ''}>2.${i + 1} ${g.name}</button>`).join('')}</nav>`
+  app.innerHTML = hero(`Vì sao bạn xếp các bao bì này vào nhóm ${groupLabel(group)}?`, 'Chạm vào ảnh để phóng to trước khi viết đánh giá của bạn.', `02 / LÝ DO & CẢM NHẬN · ${questionIndex + 1}/3`, 2)
+    + `<nav class="question-tabs" aria-label="Các nhóm đánh giá">${groups.map((g, i) => `<button type="button" class="question-tab ${i === questionIndex ? 'active' : ''}" data-question="${i}" ${i === questionIndex ? 'aria-current="step"' : ''}>2.${i + 1} ${g.name}<small>${g.vi}</small></button>`).join('')}</nav>`
     + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
-    + `<section class="question-stage"><p class="question-intro">3 bao bì bạn đã xếp vào ${group.name}</p><div class="question-products">${selected[group.id].map(id => { const p = find(id); return p ? `<div class="question-product"><button type="button" data-zoom="${id}" aria-label="Phóng to ${packageLabel(id)}"><span class="product-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${packageLabel(id)}"><span class="product-magnify" aria-hidden="true">⌕</span></button></div>` : ''; }).join('')}</div><label for="questionAnswer">Đánh giá của bạn cho nhóm ${group.name}</label><textarea id="questionAnswer" maxlength="3000" placeholder="Viết lý do bạn xếp các bao bì này vào nhóm ${group.name}...">${esc(answers[key])}</textarea></section>`
+    + `<section class="question-stage"><p class="question-intro">3 bao bì bạn đã xếp vào ${groupLabel(group)}</p><div class="question-products">${selected[group.id].map(id => { const p = find(id); return p ? `<div class="question-product"><button type="button" data-zoom="${id}" aria-label="Phóng to ${packageLabel(id)}"><span class="product-badge">${productNumber(id)}</span><img src="${esc(p.image)}" alt="${packageLabel(id)}"><span class="product-magnify" aria-hidden="true">⌕</span></button></div>` : ''; }).join('')}</div><label for="questionAnswer">Đánh giá của bạn cho nhóm ${groupLabel(group)}</label><textarea id="questionAnswer" maxlength="3000" placeholder="Viết lý do bạn xếp các bao bì này vào nhóm ${groupLabel(group)}...">${esc(answers[key])}</textarea></section>`
     + `<div class="actions question-actions"><button id="back" class="button secondary">← Quay lại chọn nhóm</button><button id="nextQuestion" class="button" ${nextUnanswered === -1 && !canContinue() ? 'disabled' : ''}>${nextUnanswered === -1 ? 'Tiếp tục →' : `Tiếp: ${groups[nextUnanswered].name} →`}</button></div>`;
   app.querySelectorAll('[data-zoom]').forEach(b => b.onclick = () => zoom(b.dataset.zoom));
   app.querySelector('#questionAnswer').oninput = e => { answers[key] = e.target.value; persist(); };
