@@ -56,7 +56,7 @@ test('phần 2.4: bật/tắt, ảnh so sánh, câu hỏi tự soạn và ghi Sh
 
     const extra = (await api('/api/survey')).data.extra;
     assert.equal(extra.groupA.image, images[0].image);
-    assert.equal(extra.groupB.name, 'Mới');
+    assert.ok(!JSON.stringify(extra).includes('Hiện tại') && !JSON.stringify(extra).includes('Mới'), 'Người làm khảo sát không nhận tên nhóm.');
     assert.equal(extra.images, undefined, 'Người làm khảo sát chỉ nhận 2 ảnh đang dùng.');
     const [choice, text, segment] = extra.questions;
 

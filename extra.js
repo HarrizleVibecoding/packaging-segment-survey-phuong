@@ -43,7 +43,13 @@ export function cleanExtraSettings(input, images) {
   return settings;
 }
 
-// What respondents get: null unless 2.4 is switched on and complete.
+// What respondents get: the comparison without group names, so the names can't bias them.
+export function respondentExtra(survey) {
+  const extra = publicExtra(survey);
+  return extra && { ...extra, groupA: { image: extra.groupA.image }, groupB: { image: extra.groupB.image } };
+}
+
+// 2.4 as it is live, with group names for the Sheet: null unless switched on and complete.
 export function publicExtra(survey) {
   const extra = survey.extra;
   if (!extra?.enabled || !extra.questions?.length) return null;

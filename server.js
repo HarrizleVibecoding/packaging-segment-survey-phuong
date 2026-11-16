@@ -5,7 +5,7 @@ import { extname, join, resolve } from 'node:path';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { initStorage, loadRegistry, saveRegistry, loadSurvey, saveSurvey, removeSurveyConfig, saveImage, readImage, removeImage, StorageConflictError, dataDir, blobMode, defaultSlug, isPreview } from './storage.js';
-import { emptyExtra, cleanExtraSettings, publicExtra, extraRecord, ExtraChangedError, maxExtraImages } from './extra.js';
+import { emptyExtra, cleanExtraSettings, publicExtra, respondentExtra, extraRecord, ExtraChangedError, maxExtraImages } from './extra.js';
 
 const root = resolve(import.meta.dirname);
 const staticFiles = {
@@ -145,7 +145,7 @@ export async function handler(req, res) {
     if (req.method === 'GET' && path === '/api/survey') {
       const slug = requestedSlug(url.searchParams.get('s')), meta = await surveyMeta(slug), { data } = await loadSurvey(slug);
       const { extra, ...rest } = data;
-      return json(res, 200, { ...rest, products: data.products.map(({ id, image }) => ({ id, image })), extra: publicExtra(data), slug, name: meta.name, open: meta.open, acceptingResponses: accepting(meta, data) });
+      return json(res, 200, { ...rest, products: data.products.map(({ id, image }) => ({ id, image })), extra: respondentExtra(data), slug, name: meta.name, open: meta.open, acceptingResponses: accepting(meta, data) });
     }
     if (req.method === 'GET' && path === '/api/admin/status') return json(res, auth(req) ? 200 : 401, { ok: auth(req), sheetConfigured: sheetReady, adminConfigured: Boolean(adminToken), preview: isPreview });
     if (path === '/api/admin/library' || path === '/api/admin/surveys' || path.startsWith('/api/admin/surveys/') || path.startsWith('/api/admin/products') || path.startsWith('/api/admin/extra')) {

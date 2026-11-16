@@ -184,7 +184,8 @@ function renderQuestions() {
 function renderExtra() {
   const extra = survey.extra, nextUnanswered = nextUnansweredStep();
   const side = s => s === 'A' ? extra.groupA : extra.groupB;
-  const sideLabel = s => `Nhóm ${s} · ${side(s).name}`;
+  // Group names stay hidden from respondents to avoid bias; only the admin and the Sheet see them.
+  const sideLabel = s => `Nhóm ${s}`;
   const radio = (name, value, checked, label) => `<label class="choice"><input type="radio" name="${name}" value="${value}" ${checked ? 'checked' : ''}><span>${label}</span></label>`;
   const question = (q, i) => {
     const a = extraAnswers[q.id], title = `${i + 1}. ${esc(q.text)}`;
@@ -195,7 +196,7 @@ function renderExtra() {
   app.innerHTML = hero('So sánh 2 nhóm bao bì', esc(extra.intro || 'Bạn cảm nhận 2 nhóm bao bì dưới đây thế nào?'), `02 / LÝ DO & CẢM NHẬN · 4/${stepCount()}`, 2)
     + questionTabs()
     + (error ? `<p class="notice" role="alert">${esc(error)}</p>` : '')
-    + `<section class="question-stage"><div class="question-products extra-products">${['A', 'B'].map(s => `<div class="question-product"><button type="button" data-extra-zoom="${s}" aria-label="Phóng to ${esc(sideLabel(s))}"><span class="product-badge">Nhóm ${s}</span><img src="${esc(side(s).image)}" alt="${esc(sideLabel(s))}"><span class="product-magnify" aria-hidden="true">⌕</span></button><strong>${esc(side(s).name)}</strong></div>`).join('')}</div>${extra.questions.map(question).join('')}</section>`
+    + `<section class="question-stage"><div class="question-products extra-products">${['A', 'B'].map(s => `<div class="question-product"><button type="button" data-extra-zoom="${s}" aria-label="Phóng to ${esc(sideLabel(s))}"><span class="product-badge">Nhóm ${s}</span><img src="${esc(side(s).image)}" alt="${esc(sideLabel(s))}"><span class="product-magnify" aria-hidden="true">⌕</span></button></div>`).join('')}</div>${extra.questions.map(question).join('')}</section>`
     + `<div class="actions question-actions"><button id="back" class="button secondary">← Quay lại chọn nhóm</button><button id="nextQuestion" class="button" ${nextUnanswered === -1 && !canContinue() ? 'disabled' : ''}>${nextUnanswered === -1 ? 'Tiếp tục →' : `Tiếp: ${stepName(nextUnanswered)} →`}</button></div>`;
   app.querySelectorAll('[data-extra-zoom]').forEach(b => b.onclick = () => showZoom(side(b.dataset.extraZoom).image, sideLabel(b.dataset.extraZoom)));
   app.querySelectorAll('[data-extra-text]').forEach(t => t.oninput = () => { extraAnswers[t.dataset.extraText] = t.value; persist(); });
